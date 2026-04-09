@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../screens/assessment/AssessmentHubScreen.dart';
 import '../../screens/Breathing/BreathingListScreen.dart';
 import '../brain_overview/BrainOverviewPage.dart';
 import '../meditation_space/MeditationSpacePage.dart';
@@ -87,10 +88,19 @@ class HomePage extends StatelessWidget {
                             );
                           },
                         ),
-                        const _OverviewCard(
-                          title: 'Các Bài Luyện Tập Hơi Thở',
+                        _OverviewCard(
+                          title: 'Bài tập đánh giá sức khỏe',
                           backgroundColor: AppColors.homeOverviewAi,
                           imagePath: 'assets/Images/HomePage5.png',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const AssessmentHubScreen(),
+                              ),
+                            );
+                          },
                         ),
                       ],
                     ),
