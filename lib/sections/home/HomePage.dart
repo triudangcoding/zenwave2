@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../screens/Breathing/BreathingListScreen.dart';
 import '../brain_overview/BrainOverviewPage.dart';
 import '../meditation_space/MeditationSpacePage.dart';
 import 'StartMeditation2.dart';
@@ -72,10 +73,19 @@ class HomePage extends StatelessWidget {
                           imagePath: 'assets/Images/HomePage4.png',
                           onTap: () => _openMeditationSpace(context),
                         ),
-                        const _OverviewCard(
-                          title: 'Theo Dõi Tâm Trạng',
+                        _OverviewCard(
+                          title: 'Bài tập thở',
                           backgroundColor: AppColors.homeOverviewMood,
                           imagePath: 'assets/Images/HomePage3.png',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const BreathingListScreen(),
+                              ),
+                            );
+                          },
                         ),
                         const _OverviewCard(
                           title: 'Các Bài Luyện Tập Hơi Thở',
