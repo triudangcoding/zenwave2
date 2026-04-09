@@ -3,9 +3,24 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../brain_overview/BrainOverviewPage.dart';
+import '../meditation_space/MeditationSpacePage.dart';
+import 'StartMeditation2.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
+
+  void _openBrainOverview(BuildContext context) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const BrainOverviewPage()));
+  }
+
+  void _openMeditationSpace(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const MeditationSpacePage()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +39,7 @@ class HomePage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildRecommendedCard(),
+                    _buildRecommendedCard(context),
                     const SizedBox(height: 10),
                     _buildStatsCard(),
                     const SizedBox(height: 12),
@@ -44,23 +59,25 @@ class HomePage extends StatelessWidget {
                       crossAxisSpacing: 8,
                       mainAxisSpacing: 8,
                       childAspectRatio: 1.55,
-                      children: const [
+                      children: [
                         _OverviewCard(
                           title: 'Tổng Quan Sóng Não',
                           backgroundColor: AppColors.homeOverviewBrain,
                           imagePath: 'assets/Images/HomePage2.png',
+                          onTap: () => _openBrainOverview(context),
                         ),
                         _OverviewCard(
                           title: 'Không gian thiền định',
                           backgroundColor: AppColors.homeOverviewSpace,
                           imagePath: 'assets/Images/HomePage4.png',
+                          onTap: () => _openMeditationSpace(context),
                         ),
-                        _OverviewCard(
+                        const _OverviewCard(
                           title: 'Theo Dõi Tâm Trạng',
                           backgroundColor: AppColors.homeOverviewMood,
                           imagePath: 'assets/Images/HomePage3.png',
                         ),
-                        _OverviewCard(
+                        const _OverviewCard(
                           title: 'Các Bài Luyện Tập Hơi Thở',
                           backgroundColor: AppColors.homeOverviewAi,
                           imagePath: 'assets/Images/HomePage5.png',
@@ -144,7 +161,7 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildRecommendedCard() {
+  Widget _buildRecommendedCard(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 12, 0),
       decoration: BoxDecoration(
@@ -196,7 +213,13 @@ class HomePage extends StatelessWidget {
                   SizedBox(
                     height: 34,
                     child: FilledButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const StartMeditationPage(),
+                          ),
+                        );
+                      },
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.cyan500,
                         shape: RoundedRectangleBorder(
@@ -435,102 +458,112 @@ class _OverviewCard extends StatelessWidget {
     required this.title,
     required this.backgroundColor,
     required this.imagePath,
+    this.onTap,
   });
 
   final String title;
   final Color backgroundColor;
   final String imagePath;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.homeCardShadow,
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(color: backgroundColor),
-              ),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: 48,
-              child: ClipRect(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                  child: Container(color: AppColors.homeOverviewFrost),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 8, right: 8, bottom: 16),
-                  child: Image.asset(
-                    imagePath,
-                    height: 80,
-                    filterQuality: FilterQuality.high,
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.image_not_supported_outlined,
-                      color: AppColors.white,
-                      size: 34,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        AppColors.homeOverviewInnerShadowTop,
-                        Colors.transparent,
-                        Colors.transparent,
-                        AppColors.homeOverviewInnerShadowBottom,
-                      ],
-                      stops: [0.0, 0.15, 0.72, 1.0],
-                    ),
-                    border: Border.all(color: AppColors.homeOverviewStroke),
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 8,
-              left: 12,
-              right: 12,
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 14.3,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.white,
-                ),
-              ),
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+              color: AppColors.homeCardShadow,
+              blurRadius: 10,
+              offset: Offset(0, 4),
             ),
           ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(color: backgroundColor),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 48,
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                    child: Container(color: AppColors.homeOverviewFrost),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      left: 8,
+                      right: 8,
+                      bottom: 16,
+                    ),
+                    child: Image.asset(
+                      imagePath,
+                      height: 80,
+                      filterQuality: FilterQuality.high,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.image_not_supported_outlined,
+                        color: AppColors.white,
+                        size: 34,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          AppColors.homeOverviewInnerShadowTop,
+                          Colors.transparent,
+                          Colors.transparent,
+                          AppColors.homeOverviewInnerShadowBottom,
+                        ],
+                        stops: [0.0, 0.15, 0.72, 1.0],
+                      ),
+                      border: Border.all(color: AppColors.homeOverviewStroke),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                left: 12,
+                right: 12,
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14.3,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -109,5 +109,20 @@ class AppColors {
   static const Color homeQuickExpertIcon = Color(0xFF36A76F);
   static const Color homeQuickExpertBg = Color(0xFFEAF6EE);
 
+  // Brain overview page semantic colors
+  static const Color brainOverviewPrimary = Color(0xFF0093AD);
+  static const Color brainOverviewTextPrimary = Color(0xFF1A1A1A);
+  static const Color brainOverviewInsightBackground = Color(0xFFDBECFF);
+  static const Color brainOverviewCardBorder = Color(0xFFD8DEE3);
+  static const Color brainOverviewGrid = Color(0xFFE1E3E6);
+
+  // Meditation space page semantic colors
+  static const Color meditationSpacePrimary = Color(0xFF0093AD);
+  static const Color meditationSpaceGreen = Color(0xFF0D971F);
+  static const Color meditationSpaceOrange = Color(0xFFFF9500);
+  static const Color meditationSpaceMintBackground = Color(0xFFD7FFDC);
+  static const Color meditationSpaceBlueBackground = Color(0xFFDBFCFF);
+  static const Color meditationSpacePeachBackground = Color(0xFFFFF0DE);
+
   static const Color white = Color(0xFFFFFFFF);
 }
