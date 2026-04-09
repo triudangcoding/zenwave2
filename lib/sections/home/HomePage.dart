@@ -43,7 +43,7 @@ class HomePage extends StatelessWidget {
                       physics: const NeverScrollableScrollPhysics(),
                       crossAxisSpacing: 8,
                       mainAxisSpacing: 8,
-                      childAspectRatio: 1.16,
+                      childAspectRatio: 1.55,
                       children: const [
                         _OverviewCard(
                           title: 'Tổng Quan Sóng Não',
@@ -67,6 +67,10 @@ class HomePage extends StatelessWidget {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 14),
+                    _buildDailySection(),
+                    const SizedBox(height: 14),
+                    _buildQuickActionsSection(),
                   ],
                 ),
               ),
@@ -277,6 +281,121 @@ class HomePage extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildDailySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Hằng ngày',
+          style: TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w700,
+            color: AppColors.neutral900,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+          decoration: BoxDecoration(
+            color: AppColors.homeSectionCardBackground,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.homeSectionCardBorder),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.homeCardShadow,
+                blurRadius: 6,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Text(
+                'Chưa có dữ liệu sóng não',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.homeDailyHeadline,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Hãy kết nối thiết bị để bắt đầu theo dõi chỉ số tập trung và thư giãn.',
+                style: TextStyle(
+                  fontSize: 16,
+                  height: 1.35,
+                  color: AppColors.homeDailyBody,
+                ),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Xem hướng dẫn kết nối thiết bị ->',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.homeDailyLink,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickActionsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Tác vụ nhanh',
+          style: TextStyle(
+            fontSize: 19,
+            fontWeight: FontWeight.w700,
+            color: AppColors.neutral900,
+          ),
+        ),
+        const SizedBox(height: 8),
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          childAspectRatio: 2.0,
+          children: const [
+            _QuickActionTile(
+              icon: Icons.self_improvement_outlined,
+              label: 'Bắt đầu\nthiền 10 phút',
+              iconColor: AppColors.homeQuickMeditationIcon,
+              iconBackground: AppColors.homeQuickMeditationBg,
+            ),
+            _QuickActionTile(
+              icon: Icons.calendar_month_outlined,
+              label: 'Đặt lịch\nnhắc nhở',
+              iconColor: AppColors.homeQuickReminderIcon,
+              iconBackground: AppColors.homeQuickReminderBg,
+            ),
+            _QuickActionTile(
+              icon: Icons.description_outlined,
+              label: 'Xem tiến\ntrình tuần',
+              iconColor: AppColors.homeQuickWeeklyIcon,
+              iconBackground: AppColors.homeQuickWeeklyBg,
+            ),
+            _QuickActionTile(
+              icon: Icons.handshake_outlined,
+              label: 'Kết nối\nchuyên gia',
+              iconColor: AppColors.homeQuickExpertIcon,
+              iconBackground: AppColors.homeQuickExpertBg,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 class _StatItem extends StatelessWidget {
@@ -348,7 +467,7 @@ class _OverviewCard extends StatelessWidget {
               left: 0,
               right: 0,
               bottom: 0,
-              height: 64,
+              height: 48,
               child: ClipRect(
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
@@ -360,10 +479,10 @@ class _OverviewCard extends StatelessWidget {
               child: Align(
                 alignment: Alignment.bottomCenter,
                 child: Padding(
-                  padding: const EdgeInsets.only(left: 8, right: 8, bottom: 5),
+                  padding: const EdgeInsets.only(left: 8, right: 8, bottom: 16),
                   child: Image.asset(
                     imagePath,
-                    height: 96,
+                    height: 80,
                     filterQuality: FilterQuality.high,
                     fit: BoxFit.contain,
                     errorBuilder: (_, __, ___) => const Icon(
@@ -396,15 +515,16 @@ class _OverviewCard extends StatelessWidget {
               ),
             ),
             Positioned(
-              top: 10,
+              top: 8,
               left: 12,
               right: 12,
               child: Text(
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 13,
+                  fontSize: 14.3,
                   fontWeight: FontWeight.w700,
                   color: AppColors.white,
                 ),
@@ -412,6 +532,57 @@ class _OverviewCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _QuickActionTile extends StatelessWidget {
+  const _QuickActionTile({
+    required this.icon,
+    required this.label,
+    required this.iconColor,
+    required this.iconBackground,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color iconColor;
+  final Color iconBackground;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.homeQuickTileBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              color: iconBackground,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, size: 34, color: iconColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                height: 1.2,
+                color: AppColors.neutral900,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

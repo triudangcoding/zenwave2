@@ -92,5 +92,22 @@ class AppColors {
   static const Color homeOverviewFrost = Color(0x66FFFFFF);
   static const Color homeOverviewStroke = Color(0x19000000);
 
+  static const Color homeSectionCardBackground = Color(0xFFFCFEFF);
+  static const Color homeSectionCardBorder = Color(0xFFE3E9ED);
+  static const Color homeQuickTileBorder = Color(0xFFE4EAEE);
+
+  static const Color homeDailyHeadline = Color(0xFFFF6460);
+  static const Color homeDailyBody = Color(0xFF2F3336);
+  static const Color homeDailyLink = Color(0xFF0093AD);
+
+  static const Color homeQuickMeditationIcon = Color(0xFF007A92);
+  static const Color homeQuickMeditationBg = Color(0xFFEAF6F9);
+  static const Color homeQuickReminderIcon = Color(0xFFE89A00);
+  static const Color homeQuickReminderBg = Color(0xFFFCF2E5);
+  static const Color homeQuickWeeklyIcon = Color(0xFFE81A00);
+  static const Color homeQuickWeeklyBg = Color(0xFFFCEDF0);
+  static const Color homeQuickExpertIcon = Color(0xFF36A76F);
+  static const Color homeQuickExpertBg = Color(0xFFEAF6EE);
+
   static const Color white = Color(0xFFFFFFFF);
 }
