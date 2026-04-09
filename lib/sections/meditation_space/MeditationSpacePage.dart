@@ -244,7 +244,7 @@ class _FeaturedCategoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 102,
+      height: 112,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       decoration: BoxDecoration(
         color: backgroundColor,
@@ -309,10 +309,10 @@ class _MeditationProgramCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
       decoration: BoxDecoration(
         color: backgroundColor,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(15),
         border: Border.all(color: borderColor),
         boxShadow: const [
           BoxShadow(
@@ -325,8 +325,8 @@ class _MeditationProgramCard extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
               color: AppColors.white,
               borderRadius: BorderRadius.circular(10),
@@ -334,7 +334,7 @@ class _MeditationProgramCard extends StatelessWidget {
             ),
             child: Icon(Icons.self_improvement_outlined, color: iconColor),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -347,7 +347,7 @@ class _MeditationProgramCard extends StatelessWidget {
                     color: titleColor,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
                   subtitle,
                   style: const TextStyle(
@@ -359,42 +359,59 @@ class _MeditationProgramCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           SizedBox(
-            width: 86,
-            height: 36,
+            width: 92,
+            height: 40,
             child: buttonFilled
                 ? FilledButton(
                     onPressed: () {},
                     style: FilledButton.styleFrom(
                       backgroundColor: buttonColor,
+                      minimumSize: const Size(92, 40),
+                      padding: EdgeInsets.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    child: const Text(
-                      'Bắt đầu',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.white,
+                    child: const Center(
+                      child: Text(
+                        'Bắt đầu',
+                        maxLines: 1,
+                        softWrap: false,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.white,
+                        ),
                       ),
                     ),
                   )
                 : OutlinedButton(
                     onPressed: () {},
                     style: OutlinedButton.styleFrom(
+                      backgroundColor: AppColors.white,
+                      minimumSize: const Size(92, 40),
+                      padding: EdgeInsets.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       side: BorderSide(color: buttonColor),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    child: Text(
-                      'Bắt đầu',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: buttonColor,
+                    child: Center(
+                      child: Text(
+                        'Bắt đầu',
+                        maxLines: 1,
+                        softWrap: false,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: buttonColor,
+                        ),
                       ),
                     ),
                   ),
