@@ -61,7 +61,7 @@ class HomePage extends StatelessWidget {
                           imagePath: 'assets/Images/HomePage3.png',
                         ),
                         _OverviewCard(
-                          title: 'Báo Cáo Sức Khỏe AI',
+                          title: 'Các Bài Luyện Tập Hơi Thở',
                           backgroundColor: AppColors.homeOverviewAi,
                           imagePath: 'assets/Images/HomePage5.png',
                         ),
@@ -198,7 +198,7 @@ class HomePage extends StatelessWidget {
                     child: FilledButton(
                       onPressed: () {},
                       style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.cyan600,
+                        backgroundColor: AppColors.cyan500,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
