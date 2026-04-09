@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -33,7 +34,7 @@ class HomePage extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-              child: _buildHeader(),
+              child: _buildHeader(context),
             ),
             Expanded(
               child: SingleChildScrollView(
@@ -118,7 +119,39 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader() {
+  void _openConnectDeviceSheet(BuildContext context) {
+    showGeneralDialog<void>(
+      context: context,
+      barrierLabel: 'Connect Device',
+      barrierDismissible: true,
+      barrierColor: Colors.black26,
+      transitionDuration: const Duration(milliseconds: 260),
+      pageBuilder: (_, __, ___) {
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: Colors.transparent,
+            child: FractionallySizedBox(
+              widthFactor: 0.88,
+              heightFactor: 1,
+              child: const _ConnectDeviceSideSheet(),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (_, animation, __, child) {
+        return SlideTransition(
+          position: Tween<Offset>(begin: const Offset(1, 0), end: Offset.zero)
+              .animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+              ),
+          child: child,
+        );
+      },
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
     return SizedBox(
       height: 46,
       child: Row(
@@ -160,20 +193,14 @@ class HomePage extends StatelessWidget {
               color: AppColors.neutral100,
               shape: BoxShape.circle,
             ),
-            child: const Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(
-                  Icons.notifications_none,
-                  size: 21,
-                  color: AppColors.neutral900,
-                ),
-                Positioned(
-                  right: 9,
-                  top: 10,
-                  child: CircleAvatar(radius: 3, backgroundColor: Colors.red),
-                ),
-              ],
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () => _openConnectDeviceSheet(context),
+              child: const Icon(
+                Icons.bluetooth_searching,
+                size: 21,
+                color: AppColors.neutral900,
+              ),
             ),
           ),
         ],
@@ -437,6 +464,285 @@ class HomePage extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _ConnectDeviceSideSheet extends StatefulWidget {
+  const _ConnectDeviceSideSheet();
+
+  @override
+  State<_ConnectDeviceSideSheet> createState() =>
+      _ConnectDeviceSideSheetState();
+}
+
+class _ConnectDeviceSideSheetState extends State<_ConnectDeviceSideSheet> {
+  bool _isScanning = true;
+  bool _isConnecting = false;
+  bool _isConnected = false;
+  String _selectedDevice = 'ZenWave NeuroBand X2';
+  double _batteryLevel = 0.78;
+  Timer? _scanTimer;
+
+  final List<String> _devices = <String>[
+    'ZenWave NeuroBand X2',
+    'ZenWave NeuroBand Pro',
+    'MindFlow Sensor A1',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _scanTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isScanning = false;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _scanTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _connectToDevice() async {
+    setState(() {
+      _isConnecting = true;
+      _isConnected = false;
+    });
+
+    await Future<void>.delayed(const Duration(milliseconds: 1400));
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isConnecting = false;
+      _isConnected = true;
+      _batteryLevel = 0.82;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.white,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Kết nối thiết bị sóng não',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral900,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close, color: AppColors.neutral700),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.teal100,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.teal300),
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 46,
+                      height: 46,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CircularProgressIndicator(
+                            value: _batteryLevel,
+                            strokeWidth: 4,
+                            backgroundColor: AppColors.teal200,
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              AppColors.cyan500,
+                            ),
+                          ),
+                          Text(
+                            '${(_batteryLevel * 100).round()}%',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.cyan700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _isConnected
+                            ? 'Đã kết nối với $_selectedDevice'
+                            : 'Trạng thái pin thiết bị khả dụng',
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          color: AppColors.neutral900,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  const Text(
+                    'Thiết bị gần đây',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.neutral800,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (_isScanning)
+                    const Text(
+                      'Đang quét...',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: AppColors.cyan700,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: _devices.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, index) {
+                    final deviceName = _devices[index];
+                    final selected = _selectedDevice == deviceName;
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        setState(() {
+                          _selectedDevice = deviceName;
+                          _isConnected = false;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: selected ? AppColors.teal100 : AppColors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: selected
+                                ? AppColors.cyan500
+                                : AppColors.homeQuickTileBorder,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? AppColors.cyan200
+                                    : AppColors.neutral100,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                Icons.sensors,
+                                color: selected
+                                    ? AppColors.cyan700
+                                    : AppColors.neutral700,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    deviceName,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.neutral900,
+                                    ),
+                                  ),
+                                  Text(
+                                    _isConnected && selected
+                                        ? 'Đã ghép nối'
+                                        : 'Sẵn sàng kết nối',
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      color: AppColors.neutral700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_isConnected && selected)
+                              const Icon(
+                                Icons.check_circle,
+                                color: AppColors.green600,
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _isConnecting ? null : _connectToDevice,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.cyan500,
+                    minimumSize: const Size.fromHeight(50),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: _isConnecting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              AppColors.white,
+                            ),
+                          ),
+                        )
+                      : Text(_isConnected ? 'Đã kết nối' : 'Kết nối thiết bị'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
