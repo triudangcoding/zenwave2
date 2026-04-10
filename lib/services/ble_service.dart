@@ -38,6 +38,15 @@ class BleService {
   StreamSubscription<BluetoothConnectionState>? _connectionSubscription;
   StreamSubscription<List<int>>? _notifySubscription;
 
+  /// Rate-limit: track last scan start time to avoid Android's 5-in-30s limit.
+  DateTime _lastScanStart = DateTime.fromMillisecondsSinceEpoch(0);
+  static const Duration _minScanInterval = Duration(seconds: 6);
+  bool _scanInProgress = false;
+
+  /// Debounce touch state changes: only commit after 1s of stable signal.
+  Timer? _touchDebounceTimer;
+  static const Duration _touchDebounceDuration = Duration(seconds: 1);
+
   Future<bool> _ensurePermissions() async {
     if (Platform.isAndroid) {
       final statuses = await [
@@ -58,11 +67,30 @@ class BleService {
   }
 
   Future<void> startScan() async {
+    // Guard: prevent concurrent scans
+    if (_scanInProgress) {
+      debugPrint('[BLE] startScan ignored — scan already in progress');
+      return;
+    }
+
+    // Rate limit: Android blocks >5 scans per 30 seconds
+    final now = DateTime.now();
+    final elapsed = now.difference(_lastScanStart);
+    if (elapsed < _minScanInterval) {
+      debugPrint(
+        '[BLE] startScan throttled — wait ${(_minScanInterval - elapsed).inSeconds}s',
+      );
+      return;
+    }
+
     final hasPermission = await _ensurePermissions();
     if (!hasPermission) {
       isScanningNotifier.value = false;
       return;
     }
+
+    _scanInProgress = true;
+    _lastScanStart = now;
 
     await stopScan();
     scanResultsNotifier.value = <BleDeviceInfo>[];
@@ -99,6 +127,7 @@ class BleService {
       withServices: <Guid>[serviceUuid],
     );
 
+    _scanInProgress = false;
     isScanningNotifier.value = false;
   }
 
@@ -108,6 +137,7 @@ class BleService {
     if (FlutterBluePlus.isScanningNow) {
       await FlutterBluePlus.stopScan();
     }
+    _scanInProgress = false;
     isScanningNotifier.value = false;
   }
 
@@ -150,11 +180,27 @@ class BleService {
 
     await characteristic.setNotifyValue(true);
     _notifySubscription = characteristic.lastValueStream.listen(_handlePayload);
+    debugPrint('[BLE] Notify subscription active, reading initial state...');
     await characteristic.read();
+    debugPrint(
+      '[BLE] Initial state read complete. touchDetected=${touchDetectedNotifier.value}',
+    );
+
+    // Lower ESP32 touch thresholds for headband electrode contact
+    // (forehead via pad is weaker signal than direct finger touch)
+    debugPrint('[BLE] Sending lowered thresholds for headband use...');
+    await sendCommand('thr:35000,30000');
+    // Small delay then re-read to get state with new thresholds
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     await sendCommand('get');
+    debugPrint(
+      '[BLE] Threshold config sent. touchDetected=${touchDetectedNotifier.value}',
+    );
   }
 
   Future<void> disconnect() async {
+    _touchDebounceTimer?.cancel();
+    _touchDebounceTimer = null;
     await _notifySubscription?.cancel();
     _notifySubscription = null;
     await _connectionSubscription?.cancel();
@@ -210,10 +256,25 @@ class BleService {
     }
 
     final payload = utf8.decode(raw, allowMalformed: true).trim().toLowerCase();
+    debugPrint('[BLE] payload received: "$payload" (${raw.length} bytes)');
     if (payload == 'true') {
-      touchDetectedNotifier.value = true;
+      debugPrint('[BLE] Touch event → TOUCHING (debounce 1s)');
+      _debounceTouchState(true);
     } else if (payload == 'false') {
-      touchDetectedNotifier.value = false;
+      debugPrint('[BLE] Touch event → NOT TOUCHING (debounce 1s)');
+      _debounceTouchState(false);
+    } else {
+      debugPrint('[BLE] Unknown payload ignored: "$payload"');
     }
+  }
+
+  void _debounceTouchState(bool newValue) {
+    _touchDebounceTimer?.cancel();
+    // If the value is already the same, nothing to do.
+    if (touchDetectedNotifier.value == newValue) return;
+    _touchDebounceTimer = Timer(_touchDebounceDuration, () {
+      debugPrint('[BLE] Touch state committed → $newValue (stable for 1s)');
+      touchDetectedNotifier.value = newValue;
+    });
   }
 }

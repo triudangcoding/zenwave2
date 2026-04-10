@@ -547,7 +547,7 @@ class _HomePageState extends State<HomePage> {
                               ? 'Đã kết nối, đang chờ dữ liệu từ cảm biến.'
                               : touchDetected
                               ? 'ESP32 báo đang có chạm da.'
-                              : 'ESP32 báo hiện không có chạm da.',
+                              : 'Device Connected',
                           style: const TextStyle(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w600,

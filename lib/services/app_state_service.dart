@@ -1,11 +1,14 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'ble_service.dart';
 
 /// Simple in-memory global state for the demo app.
-/// No backend / SharedPreferences required.
 class AppStateService {
   AppStateService._();
+
+  static const String _keyOnboarded = 'onboarding_completed';
+  static const String _keyAnswers = 'onboarding_answers';
 
   // ── Onboarding ────────────────────────────────────────────────────────────
 
@@ -27,6 +30,46 @@ class AppStateService {
     false,
   );
 
+  /// Load saved onboarding state from SharedPreferences.
+  static Future<void> loadFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool completed = prefs.getBool(_keyOnboarded) ?? false;
+    if (completed) {
+      final List<String>? raw = prefs.getStringList(_keyAnswers);
+      final List<int> answers =
+          raw?.map((s) => int.tryParse(s) ?? 0).toList() ?? <int>[];
+      quickPsychAnswers
+        ..clear()
+        ..addAll(answers);
+      _hasCompletedOnboarding = true;
+      isOnboardedNotifier.value = true;
+      predictScoresFromAnswers(answers);
+    }
+  }
+
+  /// Persist onboarding answers to SharedPreferences.
+  static Future<void> saveOnboarding(List<int> answers) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyOnboarded, true);
+    await prefs.setStringList(
+      _keyAnswers,
+      answers.map((a) => a.toString()).toList(),
+    );
+  }
+
+  /// Reset all persisted data and in-memory state.
+  static Future<void> resetAll() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    quickPsychAnswers.clear();
+    _hasCompletedOnboarding = false;
+    isOnboardedNotifier.value = false;
+    resetScores();
+    deviceConnectedNotifier.value = false;
+    connectedDeviceNameNotifier.value = null;
+    touchDetectedNotifier.value = null;
+  }
+
   // ── Device ────────────────────────────────────────────────────────────────
 
   static final ValueNotifier<bool> deviceConnectedNotifier =
@@ -40,12 +83,22 @@ class AppStateService {
   static String? get connectedDeviceName => connectedDeviceNameNotifier.value;
   static bool? get isTouchDetected => touchDetectedNotifier.value;
 
+  // ── Wearing detection toggle ──────────────────────────────────────────────
+
+  /// When false, the app skips headband wearing checks entirely.
+  static final ValueNotifier<bool> wearingDetectionEnabledNotifier =
+      ValueNotifier<bool>(true);
+
+  static bool get isWearingDetectionEnabled =>
+      wearingDetectionEnabledNotifier.value;
+
   static void bindBleState() {
     final ble = BleService.instance;
 
     void sync() {
       connectedDeviceNameNotifier.value = ble.connectedDeviceNameNotifier.value;
-      deviceConnectedNotifier.value = ble.connectedDeviceNameNotifier.value != null;
+      deviceConnectedNotifier.value =
+          ble.connectedDeviceNameNotifier.value != null;
       touchDetectedNotifier.value = ble.touchDetectedNotifier.value;
     }
 

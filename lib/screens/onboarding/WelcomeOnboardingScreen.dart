@@ -156,6 +156,7 @@ class _WelcomeOnboardingScreenState extends State<WelcomeOnboardingScreen> {
     // Predict scores from answers before completing so HomePage shows them immediately
     AppStateService.predictScoresFromAnswers(answered);
     AppStateService.completeOnboarding(answered);
+    AppStateService.saveOnboarding(answered);
   }
 
   bool get _canProceed {

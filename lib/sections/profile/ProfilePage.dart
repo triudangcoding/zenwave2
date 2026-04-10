@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../services/app_state_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -10,9 +11,6 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  bool _isScreenModeEnabled = false;
-  bool _isNotificationEnabled = true;
-
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -20,117 +18,59 @@ class _ProfilePageState extends State<ProfilePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  color: AppColors.neutral100,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.neutral200),
+          ValueListenableBuilder<bool>(
+            valueListenable: AppStateService.wearingDetectionEnabledNotifier,
+            builder: (_, wearingEnabled, __) {
+              return _ProfileActionTile(
+                icon: Icons.sensors,
+                title: 'Nhận diện đeo băng đô',
+                trailing: Switch(
+                  value: wearingEnabled,
+                  activeColor: AppColors.cyan500,
+                  inactiveThumbColor: AppColors.neutral900,
+                  inactiveTrackColor: AppColors.neutral300,
+                  onChanged: (value) {
+                    AppStateService.wearingDetectionEnabledNotifier.value =
+                        value;
+                  },
                 ),
-                child: const Icon(
-                  Icons.person,
-                  color: AppColors.neutral600,
-                  size: 34,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text(
-                    'ZenWave',
-                    style: TextStyle(
-                      color: AppColors.neutral900,
-                      fontSize: 40 / 1.6,
-                      fontWeight: FontWeight.w700,
-                      height: 1.1,
-                    ),
-                  ),
-                  SizedBox(height: 3),
-                  Text(
-                    '0968868886',
-                    style: TextStyle(
-                      color: AppColors.neutral600,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      height: 1.2,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          _ProfileActionTile(
-            icon: Icons.person_outline,
-            title: 'Tài khoản',
-            backgroundColor: AppColors.neutral100.withOpacity(0.55),
-            onTap: () {},
-          ),
-          const SizedBox(height: 8),
-          _ProfileActionTile(
-            icon: Icons.settings_outlined,
-            title: 'Cài đặt',
-            onTap: () {},
-          ),
-          _ProfileActionTile(
-            icon: Icons.smartphone_outlined,
-            title: 'Chế độ màn hình',
-            trailing: Switch(
-              value: _isScreenModeEnabled,
-              activeColor: AppColors.cyan500,
-              inactiveThumbColor: AppColors.neutral900,
-              inactiveTrackColor: AppColors.neutral300,
-              onChanged: (value) {
-                setState(() {
-                  _isScreenModeEnabled = value;
-                });
-              },
-            ),
-            onTap: () {
-              setState(() {
-                _isScreenModeEnabled = !_isScreenModeEnabled;
-              });
+                onTap: () {
+                  AppStateService.wearingDetectionEnabledNotifier.value =
+                      !AppStateService.wearingDetectionEnabledNotifier.value;
+                },
+              );
             },
           ),
           _ProfileActionTile(
-            icon: Icons.notifications_none,
-            title: 'Thông báo',
-            trailing: Switch(
-              value: _isNotificationEnabled,
-              activeColor: AppColors.cyan500,
-              inactiveThumbColor: AppColors.neutral900,
-              inactiveTrackColor: AppColors.neutral300,
-              onChanged: (value) {
-                setState(() {
-                  _isNotificationEnabled = value;
-                });
-              },
-            ),
-            onTap: () {
-              setState(() {
-                _isNotificationEnabled = !_isNotificationEnabled;
-              });
+            icon: Icons.restore,
+            title: 'Xoá dữ liệu',
+            onTap: () async {
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Xác nhận'),
+                  content: const Text(
+                    'Bạn có chắc muốn xoá toàn bộ dữ liệu? Bạn sẽ phải trả lời lại bộ câu hỏi.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Huỷ'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text(
+                        'Xoá',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+              if (confirmed == true) {
+                await AppStateService.resetAll();
+              }
             },
-          ),
-          _ProfileActionTile(
-            icon: Icons.shield_outlined,
-            title: 'Bảo mật',
-            onTap: () {},
-          ),
-          _ProfileActionTile(
-            icon: Icons.help_outline,
-            title: 'Hỗ trợ',
-            onTap: () {},
-          ),
-          _ProfileActionTile(
-            icon: Icons.logout,
-            title: 'Thoát',
-            showChevron: false,
-            onTap: () {},
           ),
         ],
       ),

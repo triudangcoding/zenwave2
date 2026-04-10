@@ -1,7 +1,7 @@
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import '../../core/theme/app_colors.dart';
 
@@ -559,10 +559,7 @@ class _MeditationListCard extends StatelessWidget {
         onTap: onPlay,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          constraints: const BoxConstraints(
-            minHeight: 112,
-            maxHeight: 112,
-          ),
+          constraints: const BoxConstraints(minHeight: 112, maxHeight: 112),
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: AppColors.white,
@@ -742,25 +739,38 @@ class _EmptyResultCard extends StatelessWidget {
   }
 }
 
-class _MeditationDetailPage extends StatelessWidget {
+class _MeditationDetailPage extends StatefulWidget {
   const _MeditationDetailPage({required this.meditation});
 
   final _MeditationVideo meditation;
 
-  Future<void> _openVideo(BuildContext context) async {
-    final uri = Uri.tryParse(meditation.youtubeUrl);
-    if (uri == null) {
-      return;
-    }
+  @override
+  State<_MeditationDetailPage> createState() => _MeditationDetailPageState();
+}
 
-    final launched = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
-    if (!context.mounted || launched) {
-      return;
-    }
+class _MeditationDetailPageState extends State<_MeditationDetailPage> {
+  late final YoutubePlayerController _ytCtrl;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Không mở được video. Vui lòng thử lại.')),
+  @override
+  void initState() {
+    super.initState();
+    final uri = Uri.tryParse(widget.meditation.youtubeUrl);
+    final videoId = uri?.queryParameters['v'] ?? '';
+    _ytCtrl = YoutubePlayerController.fromVideoId(
+      videoId: videoId,
+      autoPlay: false,
+      params: const YoutubePlayerParams(
+        showControls: true,
+        showFullscreenButton: true,
+        mute: false,
+      ),
     );
+  }
+
+  @override
+  void dispose() {
+    _ytCtrl.close();
+    super.dispose();
   }
 
   @override
@@ -792,7 +802,7 @@ class _MeditationDetailPage extends StatelessWidget {
               child: Stack(
                 children: [
                   Image.network(
-                    meditation.thumbnailUrl,
+                    widget.meditation.thumbnailUrl,
                     width: double.infinity,
                     height: 220,
                     fit: BoxFit.cover,
@@ -819,7 +829,7 @@ class _MeditationDetailPage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          meditation.title,
+                          widget.meditation.title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -831,7 +841,7 @@ class _MeditationDetailPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '${meditation.duration}  •  ${meditation.level}  •  ${meditation.category}',
+                          '${widget.meditation.duration}  •  ${widget.meditation.level}  •  ${widget.meditation.category}',
                           style: const TextStyle(
                             color: AppColors.white,
                             fontWeight: FontWeight.w600,
@@ -845,7 +855,7 @@ class _MeditationDetailPage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              meditation.description,
+              widget.meditation.description,
               style: const TextStyle(
                 fontSize: 14,
                 color: AppColors.neutral800,
@@ -863,7 +873,7 @@ class _MeditationDetailPage extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             ...List.generate(
-              meditation.preMeditationSteps.length,
+              widget.meditation.preMeditationSteps.length,
               (index) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Row(
@@ -889,7 +899,7 @@ class _MeditationDetailPage extends StatelessWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        meditation.preMeditationSteps[index],
+                        widget.meditation.preMeditationSteps[index],
                         style: const TextStyle(
                           fontSize: 14,
                           height: 1.4,
@@ -902,55 +912,18 @@ class _MeditationDetailPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFE2EAED)),
+            const Text(
+              'Video hướng dẫn',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.neutral900,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Video hướng dẫn',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.neutral900,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    meditation.youtubeUrl,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.neutral700,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: () => _openVideo(context),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.meditationSpacePrimary,
-                        minimumSize: const Size(double.infinity, 46),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: const Icon(Icons.play_circle_fill_rounded),
-                      label: const Text(
-                        'Mở video và bắt đầu thiền',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: YoutubePlayer(controller: _ytCtrl),
             ),
           ],
         ),
@@ -991,7 +964,7 @@ const List<_MeditationVideo> _mockMeditations = [
     level: 'Cơ bản',
     thumbnailUrl:
         'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1000&q=80',
-    youtubeUrl: 'https://www.youtube.com/watch?v=inpok4MKVLM',
+    youtubeUrl: 'https://www.youtube.com/watch?v=GjZAgs1cw18',
     preMeditationSteps: [
       'Ngồi hoặc nằm ở tư thế thoải mái, thả lỏng vai và cổ.',
       'Tắt bớt tiếng ồn, để điện thoại ở chế độ yên lặng.',
@@ -1007,7 +980,7 @@ const List<_MeditationVideo> _mockMeditations = [
     level: 'Cơ bản',
     thumbnailUrl:
         'https://images.unsplash.com/photo-1474418397713-7ede21d49118?auto=format&fit=crop&w=1000&q=80',
-    youtubeUrl: 'https://www.youtube.com/watch?v=O-6f5wQXSu8',
+    youtubeUrl: 'https://www.youtube.com/watch?v=vgcX1bNNP5Q',
     preMeditationSteps: [
       'Đặt hai chân chạm sàn và giữ lưng thẳng tự nhiên.',
       'Đặt một tay lên ngực, một tay lên bụng để cảm nhận nhịp thở.',
@@ -1023,7 +996,7 @@ const List<_MeditationVideo> _mockMeditations = [
     level: 'Trung bình',
     thumbnailUrl:
         'https://images.unsplash.com/photo-1444312645910-ffa973656eba?auto=format&fit=crop&w=1000&q=80',
-    youtubeUrl: 'https://www.youtube.com/watch?v=ZToicYcHIOU',
+    youtubeUrl: 'https://www.youtube.com/watch?v=8bROgHYDbzc',
     preMeditationSteps: [
       'Chuẩn bị bàn làm việc gọn gàng, bỏ bớt yếu tố gây xao nhãng.',
       'Ngồi thẳng lưng, mắt nhìn nhẹ về một điểm cố định.',

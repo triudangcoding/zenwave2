@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/breathing_exercise.dart';
@@ -327,6 +327,14 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   Timer? _chartTimer;
   Timer? _signalResumeTimer;
 
+  // ── Wearing detection ──
+  bool _headbandRemovedHandled = false;
+
+  bool get _isWearing {
+    if (!AppStateService.isWearingDetectionEnabled) return true;
+    return AppStateService.isTouchDetected == true;
+  }
+
   // Prepare countdown
   int _prepCountdown = 5;
 
@@ -373,20 +381,104 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   String _tensionInsight = '';
   String _copingInsight = '';
 
+  // Audio
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  final AudioPlayer _musicPlayer = AudioPlayer();
+  String? _playingTrack;
+
   // Wave definitions
   static const Color alphaColor = Color(0xFF149A33);
   static const Color betaColor = Color(0xFF009CC4);
   static const Color deltaColor = Color(0xFFE8575A);
 
   @override
+  void initState() {
+    super.initState();
+    AppStateService.touchDetectedNotifier.addListener(_onTouchChanged);
+    AppStateService.wearingDetectionEnabledNotifier.addListener(
+      _onWearingToggleChanged,
+    );
+  }
+
+  @override
   void dispose() {
     _phaseTimer?.cancel();
     _chartTimer?.cancel();
     _signalResumeTimer?.cancel();
+    _audioPlayer.dispose();
+    _musicPlayer.dispose();
+    AppStateService.touchDetectedNotifier.removeListener(_onTouchChanged);
+    AppStateService.wearingDetectionEnabledNotifier.removeListener(
+      _onWearingToggleChanged,
+    );
     super.dispose();
   }
 
+  Future<void> _playBeep() async {
+    try {
+      await _audioPlayer.stop();
+      await _audioPlayer.play(AssetSource('sound/beep.mp3'));
+    } catch (_) {}
+  }
+
+  Future<void> _playFinishBeeps() async {
+    for (int i = 0; i < 3; i++) {
+      try {
+        await _audioPlayer.stop();
+        await _audioPlayer.play(AssetSource('sound/beep.mp3'));
+        await Future.delayed(const Duration(milliseconds: 300));
+      } catch (_) {}
+    }
+  }
+
+  void _onWearingToggleChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onTouchChanged() {
+    debugPrint(
+      '[BrainWaves] _onTouchChanged: touch=${AppStateService.isTouchDetected}, '
+      'phase=$_phase, detectionEnabled=${AppStateService.isWearingDetectionEnabled}, '
+      'handled=$_headbandRemovedHandled',
+    );
+    if (!AppStateService.isWearingDetectionEnabled) return;
+    if (mounted) setState(() {});
+    final touching = AppStateService.isTouchDetected;
+    if (touching == false &&
+        _phase == _MeasurePhase.measuring &&
+        !_headbandRemovedHandled) {
+      _pauseForHeadbandRemoved();
+    }
+  }
+
+  void _pauseForHeadbandRemoved() {
+    _headbandRemovedHandled = true;
+    _phaseTimer?.cancel();
+    _chartTimer?.cancel();
+    _signalResumeTimer?.cancel();
+    setState(() {
+      _phase = _MeasurePhase.idle;
+      _alphaPoints.clear();
+      _betaPoints.clear();
+      _deltaPoints.clear();
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Băng đô đã được tháo ra. Vui lòng đeo lại và bắt đầu đo mới.',
+            ),
+            duration: Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+    }
+  }
+
   void _startFlow() {
+    _headbandRemovedHandled = false;
     setState(() {
       _phase = _MeasurePhase.preparing;
       _prepCountdown = 5;
@@ -446,6 +538,8 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
       _phase = _MeasurePhase.measuring;
     });
 
+    _playBeep(); // beep at measurement start
+
     // Generate live data every 500ms → 2 points/sec, 35s = ~70 ticks
     _chartTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
       if (!mounted) {
@@ -504,6 +598,10 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
       if (timer.tick % 2 == 0) {
         _elapsedSeconds++;
         if (mounted) setState(() {});
+        // beep every 5 seconds during measurement
+        if (_elapsedSeconds % 5 == 0 && _elapsedSeconds < _measureDurationSec) {
+          _playBeep();
+        }
       }
 
       if (_elapsedSeconds >= _measureDurationSec) {
@@ -514,6 +612,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   }
 
   void _finishMeasurement() {
+    _playFinishBeeps(); // 3 quick beeps on completion
     // Compute averages from accumulated points
     _alphaAvg = _alphaPoints.isEmpty
         ? 0
@@ -668,8 +767,10 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     _phaseTimer?.cancel();
     _chartTimer?.cancel();
     _signalResumeTimer?.cancel();
+    _musicPlayer.stop();
     setState(() {
       _phase = _MeasurePhase.idle;
+      _playingTrack = null;
       _alphaPoints.clear();
       _betaPoints.clear();
       _deltaPoints.clear();
@@ -704,6 +805,10 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
               const SizedBox(height: 16),
               // ── Device card ──
               _buildDeviceCard(deviceName),
+              const SizedBox(height: 12),
+              // ── Wearing status ──
+              if (AppStateService.isWearingDetectionEnabled)
+                _buildWearingStatus(),
               const SizedBox(height: 20),
               // ── Phase content ──
               if (_phase == _MeasurePhase.idle) _buildIdle(),
@@ -713,6 +818,43 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // ── Wearing status ────────────────────────────────────────────────────────
+
+  Widget _buildWearingStatus() {
+    final wearing = AppStateService.isTouchDetected == true;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: wearing ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: wearing ? const Color(0xFF4CAF50) : const Color(0xFFFF9800),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            wearing ? Icons.check_circle : Icons.warning_amber_rounded,
+            color: wearing ? const Color(0xFF4CAF50) : const Color(0xFFFF9800),
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            wearing ? 'Đang đeo băng đô' : 'Chưa đeo băng đô',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: wearing
+                  ? const Color(0xFF2E7D32)
+                  : const Color(0xFFE65100),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -853,8 +995,16 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         _buildPrimaryButton(
           label: 'Đo sóng não',
           icon: Icons.waves,
-          onPressed: _startFlow,
+          onPressed: _isWearing ? _startFlow : null,
         ),
+        if (!_isWearing && AppStateService.isWearingDetectionEnabled)
+          const Padding(
+            padding: EdgeInsets.only(top: 10),
+            child: Text(
+              'Vui lòng đeo băng đô trước khi đo.',
+              style: TextStyle(fontSize: 13, color: Color(0xFFE65100)),
+            ),
+          ),
       ],
     );
   }
@@ -1879,7 +2029,24 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     );
   }
 
+  Future<void> _toggleTrack(_SoundRec rec) async {
+    if (_playingTrack == rec.assetPath) {
+      await _musicPlayer.pause();
+      if (mounted) setState(() => _playingTrack = null);
+    } else {
+      if (mounted) setState(() => _playingTrack = rec.assetPath);
+      await _musicPlayer.stop();
+      await _musicPlayer.play(AssetSource(rec.assetPath));
+      _musicPlayer.onPlayerComplete.listen((_) {
+        if (mounted && _playingTrack == rec.assetPath) {
+          setState(() => _playingTrack = null);
+        }
+      });
+    }
+  }
+
   Widget _buildSoundRecCard(_SoundRec rec) {
+    final isPlaying = _playingTrack == rec.assetPath;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Material(
@@ -1887,42 +2054,34 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          onTap: () async {
-            final uri = Uri.tryParse(rec.youtubeUrl);
-            if (uri != null && await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            }
-          },
+          onTap: () => _toggleTrack(rec),
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFFFE0C0)),
+              border: Border.all(
+                color: isPlaying
+                    ? rec.color.withValues(alpha: 0.5)
+                    : rec.color.withValues(alpha: 0.2),
+                width: isPlaying ? 1.5 : 1.0,
+              ),
+              color: isPlaying
+                  ? rec.color.withValues(alpha: 0.04)
+                  : AppColors.white,
             ),
             child: Row(
               children: [
-                // Thumbnail
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    rec.thumbnailUrl,
-                    width: 56,
-                    height: 56,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE67E22).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Icon(
-                        rec.icon,
-                        color: const Color(0xFFE67E22),
-                        size: 24,
-                      ),
-                    ),
+                // Icon badge
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: rec.color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
                   ),
+                  child: isPlaying
+                      ? _PulsingIcon(color: rec.color, icon: rec.icon)
+                      : Icon(rec.icon, color: rec.color, size: 26),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1944,17 +2103,17 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                         children: [
                           Text(
                             rec.category,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: Color(0xFFE67E22),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: rec.color,
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 6),
                           Text(
-                            rec.duration,
+                            '• ${rec.duration}',
                             style: const TextStyle(
-                              fontSize: 12,
+                              fontSize: 11,
                               color: AppColors.neutral500,
                             ),
                           ),
@@ -1968,24 +2127,27 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                           color: AppColors.neutral600,
                           height: 1.4,
                         ),
-                        maxLines: 3,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 8),
-                Container(
-                  width: 32,
-                  height: 32,
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE67E22).withValues(alpha: 0.12),
+                    color: isPlaying
+                        ? rec.color
+                        : rec.color.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.play_arrow_rounded,
-                    color: Color(0xFFE67E22),
-                    size: 20,
+                  child: Icon(
+                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    color: isPlaying ? Colors.white : rec.color,
+                    size: 22,
                   ),
                 ),
               ],
@@ -2037,28 +2199,26 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         ],
         sounds: [
           _SoundRec(
-            title: 'Nhạc thiền tĩnh lặng — Sóng Alpha sâu',
-            icon: Icons.waves,
-            duration: '60 phút',
+            title: 'Nhạc thiền tĩnh tâm',
+            icon: Icons.self_improvement,
+            duration: '~7 phút',
             category: 'Thư giãn sâu',
             reason:
-                'Sóng Alpha ổn định — âm thanh tần số thấp giúp kéo dài '
-                'trạng thái thiền định và đưa bạn vào giấc ngủ sâu.',
-            youtubeUrl: 'https://www.youtube.com/watch?v=WPni755-Krg',
-            thumbnailUrl:
-                'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=400&q=80',
+                'Sóng Alpha ổn định — âm nhạc thiền dịu nhẹ giúp đào sâu trạng thái '
+                'bình an và duy trì sóng Alpha.',
+            assetPath: 'sound/09 Nhac thien.mp3',
+            color: const Color(0xFF2E86AB),
           ),
           _SoundRec(
-            title: 'Tiếng mưa rơi nhẹ nhàng',
-            icon: Icons.water_drop,
-            duration: '3 giờ',
-            category: 'Âm thanh thiên nhiên',
+            title: 'Giai điệu an nhiên',
+            icon: Icons.spa,
+            duration: '~7 phút',
+            category: 'Cân bằng năng lượng',
             reason:
-                'Tiếng mưa tạo hiệu ứng "white noise" tự nhiên, duy trì '
-                'sóng Alpha và giúp não bộ thư giãn tối đa.',
-            youtubeUrl: 'https://www.youtube.com/watch?v=mPZkdNFkNps',
-            thumbnailUrl:
-                'https://images.unsplash.com/photo-1515694346937-94d85e41e6f0?auto=format&fit=crop&w=400&q=80',
+                'Nhạc thiền nhẹ nhàng giúp kéo dài trạng thái lạc quan, '
+                'tăng cường sóng Alpha trước giờ ngủ.',
+            assetPath: 'sound/10 Nhac thien.mp3',
+            color: const Color(0xFF4F9A67),
           ),
         ],
       );
@@ -2102,28 +2262,26 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         ],
         sounds: [
           _SoundRec(
-            title: 'Nhạc piano nhẹ nhàng giảm stress',
-            icon: Icons.piano,
-            duration: '45 phút',
+            title: 'Nhạc thiền giảm stress',
+            icon: Icons.music_note,
+            duration: '~10 phút',
             category: 'Giảm stress',
             reason:
-                'Sóng Beta tăng nhẹ — giai điệu piano chậm giúp hạ nhịp tim '
+                'Sóng Beta tăng nhẹ — giai điệu thiền nhẹ giúp hạ nhịp tim '
                 'và chuyển não từ Beta sang Alpha một cách tự nhiên.',
-            youtubeUrl: 'https://www.youtube.com/watch?v=77ZozI0rw7w',
-            thumbnailUrl:
-                'https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?auto=format&fit=crop&w=400&q=80',
+            assetPath: 'sound/07 Nhac thien.mp3',
+            color: const Color(0xFFE67E22),
           ),
           _SoundRec(
-            title: 'Âm thanh rừng & suối chảy',
-            icon: Icons.forest,
-            duration: '2 giờ',
-            category: 'Âm thanh thiên nhiên',
+            title: 'Tiếng nhạc cân bằng tâm trí',
+            icon: Icons.waves,
+            duration: '~10 phút',
+            category: 'Cân bằng',
             reason:
-                'Âm thanh thiên nhiên kích thích hệ phó giao cảm, '
+                'Âm nhạc thiền nhị nhàng kích thích hệ phó giao cảm, '
                 'giảm cortisol và giúp sóng Alpha phục hồi.',
-            youtubeUrl: 'https://www.youtube.com/watch?v=eKFTSSKCzWA',
-            thumbnailUrl:
-                'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=400&q=80',
+            assetPath: 'sound/08 Nhac thien.mp3',
+            color: const Color(0xFF9B59B6),
           ),
         ],
       );
@@ -2169,40 +2327,37 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         ],
         sounds: [
           _SoundRec(
-            title: 'Nhạc trị liệu 432Hz — Giải toả căng thẳng',
-            icon: Icons.music_note,
-            duration: '1 giờ',
-            category: 'Trị liệu',
+            title: 'Nhạc thiền giải toả căng thẳng',
+            icon: Icons.healing,
+            duration: '~8 phút',
+            category: 'Phục hồi',
             reason:
-                'Tần số 432Hz được nghiên cứu giúp giảm lo âu và '
+                'Tần số thấp của nhạc thiền giúp giảm lo âu và '
                 'hạ hoạt động Beta. Phù hợp với mức căng thẳng hiện tại.',
-            youtubeUrl: 'https://www.youtube.com/watch?v=aEqlQvczMJQ',
-            thumbnailUrl:
-                'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&w=400&q=80',
+            assetPath: 'sound/04 Nhac thien.mp3',
+            color: const Color(0xFFE74C3C),
           ),
           _SoundRec(
-            title: 'Tiếng sóng biển — Thư giãn sâu',
-            icon: Icons.beach_access,
-            duration: '2 giờ',
-            category: 'Âm thanh thiên nhiên',
-            reason:
-                'Sóng biển tạo nhịp chậm đều đặn, kích thích sóng Alpha '
-                'và giúp hệ thần kinh hạ nhiệt khi Beta cao.',
-            youtubeUrl: 'https://www.youtube.com/watch?v=bn9F19Hi1Lk',
-            thumbnailUrl:
-                'https://images.unsplash.com/photo-1505118380757-91f5f5632de0?auto=format&fit=crop&w=400&q=80',
-          ),
-          _SoundRec(
-            title: 'Nhạc thiền Tây Tạng — Chuông xoay',
+            title: 'Giai điệu bình an nội tâm',
             icon: Icons.self_improvement,
-            duration: '1 giờ 30 phút',
+            duration: '~10 phút',
             category: 'Thiền định',
             reason:
-                'Chuông xoay Tây Tạng tạo rung động giúp đồng bộ sóng não, '
-                'giảm Beta và tăng trạng thái thiền định Alpha-Theta.',
-            youtubeUrl: 'https://www.youtube.com/watch?v=D8KMUkpMY5M',
-            thumbnailUrl:
-                'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=400&q=80',
+                'Âm nhạc thiền định tạo rào cản đối với suy nghĩ tiêu cực, '
+                'giúp não chuyển sang Alpha-Theta.',
+            assetPath: 'sound/09 Nhac thien.mp3',
+            color: const Color(0xFF8E44AD),
+          ),
+          _SoundRec(
+            title: 'Âm thanh phục hồi năng lượng',
+            icon: Icons.spa,
+            duration: '~11 phút',
+            category: 'Cân bằng',
+            reason:
+                'Nhạc dịu bước đầu giúp não ngưng súy nghĩ quá mức '
+                'và hạ Beta nhanh chóng.',
+            assetPath: 'sound/10 Nhac thien.mp3',
+            color: const Color(0xFF16A085),
           ),
         ],
       );
@@ -2258,42 +2413,37 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         ],
         sounds: [
           _SoundRec(
-            title: 'Nhạc trị liệu 528Hz — Chữa lành & phục hồi',
+            title: 'Nhạc thiền chữa lành tâm trí',
             icon: Icons.healing,
-            duration: '2 giờ',
+            duration: '~8 phút',
             category: 'Trị liệu',
             reason:
-                'Mức căng thẳng cao — tần số 528Hz (Solfeggio) được dùng '
-                'trong liệu pháp âm thanh để giảm cortisol và phục hồi '
-                'sóng Alpha bị ức chế.',
-            youtubeUrl: 'https://www.youtube.com/watch?v=aEqlQvczMJQ',
-            thumbnailUrl:
-                'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&w=400&q=80',
+                'Mức căng thẳng cao — nhạc thiền dịu giúp giảm cortisol '
+                'và phục hồi sóng Alpha bị ức chế.',
+            assetPath: 'sound/04 Nhac thien.mp3',
+            color: const Color(0xFFE74C3C),
           ),
           _SoundRec(
-            title: 'Tiếng mưa rào & sấm xa — Xoá căng thẳng',
-            icon: Icons.thunderstorm,
-            duration: '3 giờ',
-            category: 'Âm thanh thiên nhiên',
-            reason:
-                'Tiếng mưa rào kết hợp sấm xa tạo hiệu ứng che phủ mạnh, '
-                'giúp não ngừng suy nghĩ quá mức và hạ Beta nhanh chóng.',
-            youtubeUrl: 'https://www.youtube.com/watch?v=mPZkdNFkNps',
-            thumbnailUrl:
-                'https://images.unsplash.com/photo-1428592953211-077101b2021b?auto=format&fit=crop&w=400&q=80',
-          ),
-          _SoundRec(
-            title: 'Nhạc thiền Delta — Giấc ngủ phục hồi',
+            title: 'Giai điệu thư thái sâu',
             icon: Icons.nightlight_round,
-            duration: '8 giờ',
+            duration: '~7 phút',
             category: 'Giấc ngủ sâu',
             reason:
                 'Khi Beta quá cao, giấc ngủ sâu là ưu tiên phục hồi. '
-                'Nhạc tần số Delta (0.5-4Hz) giúp não chuyển sang trạng thái '
-                'nghỉ ngơi và tái tạo.',
-            youtubeUrl: 'https://www.youtube.com/watch?v=WPni755-Krg',
-            thumbnailUrl:
-                'https://images.unsplash.com/photo-1507400492013-162706c8c05e?auto=format&fit=crop&w=400&q=80',
+                'Nhạc thiền dịu giúp não chuyển sang trạng thái nghỉ ngơi.',
+            assetPath: 'sound/07 Nhac thien.mp3',
+            color: const Color(0xFF2C3E50),
+          ),
+          _SoundRec(
+            title: 'Âm thanh phục hồi toàn thân',
+            icon: Icons.spa,
+            duration: '~11 phút',
+            category: 'Phục hồi',
+            reason:
+                'Âm nhạc thiền giúp giải phóng năng lượng '
+                'Beta dư thừa và phục hồi sự cân bằng Alpha.',
+            assetPath: 'sound/10 Nhac thien.mp3',
+            color: const Color(0xFF16A085),
           ),
         ],
       );
@@ -2628,7 +2778,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   Widget _buildPrimaryButton({
     required String label,
     required IconData icon,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
   }) {
     return SizedBox(
       width: double.infinity,
@@ -3074,16 +3224,16 @@ class _SoundRec {
     required this.duration,
     required this.category,
     required this.reason,
-    required this.youtubeUrl,
-    required this.thumbnailUrl,
+    required this.assetPath,
+    required this.color,
   });
   final String title;
   final IconData icon;
   final String duration;
   final String category;
   final String reason;
-  final String youtubeUrl;
-  final String thumbnailUrl;
+  final String assetPath;
+  final Color color;
 }
 
 class _Recommendations {
@@ -3341,6 +3491,53 @@ class _TheorySection extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Pulsing icon for currently-playing sound card ─────────────────────────
+
+class _PulsingIcon extends StatefulWidget {
+  const _PulsingIcon({required this.color, required this.icon});
+  final Color color;
+  final IconData icon;
+
+  @override
+  State<_PulsingIcon> createState() => _PulsingIconState();
+}
+
+class _PulsingIconState extends State<_PulsingIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat(reverse: true);
+    _anim = Tween<double>(
+      begin: 0.5,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, __) => Opacity(
+        opacity: _anim.value,
+        child: Icon(widget.icon, color: widget.color, size: 26),
       ),
     );
   }

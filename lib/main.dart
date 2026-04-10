@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/navigation/tab_navigation_controller.dart';
 import 'core/theme/app_colors.dart';
@@ -12,8 +11,7 @@ import 'services/app_state_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.clear();
+  await AppStateService.loadFromPrefs();
   AppStateService.bindBleState();
   runApp(const MyApp());
 }
