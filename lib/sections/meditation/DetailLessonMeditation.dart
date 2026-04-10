@@ -7,16 +7,16 @@ import '../health_management/HealthTabMenu.dart';
 
 /// Maps lesson titles → YouTube video IDs (meditation / mindfulness videos).
 const Map<String, String> _lessonVideoIds = {
-  'Nền tảng hơi thở': 'inpok4MKVLM',       // 5-min breathing meditation
-  'Thả lỏng cơ thể': 'MIr3RsUWrdo',        // body relaxation guided
-  'Nhận Diện Suy Nghĩ': '4pLUleLdwY4',      // mindfulness of thoughts
-  'Cảm Giác Cơ Thể': '15q-N-_kkrU',         // body scan meditation
+  'Nền tảng hơi thở': 'inpok4MKVLM', // 5-min breathing meditation
+  'Thả lỏng cơ thể': 'MIr3RsUWrdo', // body relaxation guided
+  'Nhận Diện Suy Nghĩ': '4pLUleLdwY4', // mindfulness of thoughts
+  'Cảm Giác Cơ Thể': '15q-N-_kkrU', // body scan meditation
   'Xử Lý Cảm Xúc Tiêu Cực': 'SEfs5TJZ6Nk', // emotional healing
-  'Thiền Từ Bi (Metta)': '-d_AA9H4z9U',      // loving-kindness meditation
-  'Thiền Chấp Nhận': 'ZToicYcHIOU',          // acceptance meditation
-  'Thiền Lưu Thông': '2K4z_IxsaHE',          // flow meditation
-  'Thiền Khai Mở': 'O-6f5wQXSu8',            // open awareness
-  'Thiền Giác Ngộ': 'wirV265ZYSw',            // awakening meditation
+  'Thiền Từ Bi (Metta)': '-d_AA9H4z9U', // loving-kindness meditation
+  'Thiền Chấp Nhận': 'ZToicYcHIOU', // acceptance meditation
+  'Thiền Lưu Thông': '2K4z_IxsaHE', // flow meditation
+  'Thiền Khai Mở': 'O-6f5wQXSu8', // open awareness
+  'Thiền Giác Ngộ': 'wirV265ZYSw', // awakening meditation
 };
 
 const String _defaultVideoId = 'inpok4MKVLM';
@@ -57,7 +57,8 @@ class _DetailLessonMeditationPageState
   @override
   void initState() {
     super.initState();
-    final videoId = _lessonVideoIds[widget.lessonTitle] ??
+    final videoId =
+        _lessonVideoIds[widget.lessonTitle] ??
         _extraVideoIds[widget.lessonTitle] ??
         _defaultVideoId;
     _ytCtrl = YoutubePlayerController.fromVideoId(

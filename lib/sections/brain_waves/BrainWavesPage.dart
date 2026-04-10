@@ -1286,10 +1286,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
               const SizedBox(height: 4),
               const Text(
                 'Đo lại để xem tình trạng có cải thiện không',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Color(0xCCFFFFFF),
-                ),
+                style: TextStyle(fontSize: 13, color: Color(0xCCFFFFFF)),
               ),
               const SizedBox(height: 12),
               SizedBox(
@@ -1300,10 +1297,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                   icon: const Icon(Icons.replay, size: 20),
                   label: const Text(
                     'Đo lại sóng não',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.white,
