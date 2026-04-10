@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../models/breathing_exercise.dart';
 import '../../screens/Breathing/BreathingDetailScreen.dart';
-import '../../sections/meditation/LessonTestMeditation.dart';
+import '../../sections/meditation/DetailLessonMeditation.dart';
 import '../../services/app_state_service.dart';
 import '../../services/ble_service.dart';
 
@@ -1736,8 +1736,11 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) =>
-                    LessonTestMeditationPage(courseTitle: rec.title),
+                builder: (_) => DetailLessonMeditationPage(
+                  lessonNumber: 1,
+                  lessonTitle: rec.title,
+                  isResume: false,
+                ),
               ),
             );
           },
