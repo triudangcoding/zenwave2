@@ -1,10 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 
 import 'StartMeditation.dart';
 import '../../core/theme/app_colors.dart';
 import '../health_management/HealthTabMenu.dart';
 
-class DetailLessonMeditationPage extends StatelessWidget {
+/// Maps lesson titles → sample demonstration video URLs.
+const Map<String, String> _lessonVideoUrls = {
+  'Nền tảng hơi thở':
+      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+  'Thả lỏng cơ thể':
+      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+  'Nhận Diện Suy Nghĩ':
+      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+  'Cảm Giác Cơ Thể':
+      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+  'Xử Lý Cảm Xúc Tiêu Cực':
+      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+  'Thiền Từ Bi (Metta)':
+      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+  'Thiền Chấp Nhận':
+      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+  'Thiền Lưu Thông':
+      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+  'Thiền Khai Mở':
+      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+  'Thiền Giác Ngộ':
+      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+};
+
+const String _defaultVideoUrl =
+    'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4';
+
+class DetailLessonMeditationPage extends StatefulWidget {
   const DetailLessonMeditationPage({
     super.key,
     required this.lessonNumber,
@@ -15,6 +43,37 @@ class DetailLessonMeditationPage extends StatelessWidget {
   final int lessonNumber;
   final String lessonTitle;
   final bool isResume;
+
+  @override
+  State<DetailLessonMeditationPage> createState() =>
+      _DetailLessonMeditationPageState();
+}
+
+class _DetailLessonMeditationPageState
+    extends State<DetailLessonMeditationPage> {
+  late VideoPlayerController _videoCtrl;
+  bool _videoInitialized = false;
+  bool _videoError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final url = _lessonVideoUrls[widget.lessonTitle] ?? _defaultVideoUrl;
+    _videoCtrl = VideoPlayerController.networkUrl(Uri.parse(url))
+      ..initialize()
+          .then((_) {
+            if (mounted) setState(() => _videoInitialized = true);
+          })
+          .catchError((_) {
+            if (mounted) setState(() => _videoError = true);
+          });
+  }
+
+  @override
+  void dispose() {
+    _videoCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +107,7 @@ class DetailLessonMeditationPage extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Bài $lessonNumber: $lessonTitle',
+                      'Bài ${widget.lessonNumber}: ${widget.lessonTitle}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
@@ -83,7 +142,7 @@ class DetailLessonMeditationPage extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Expanded(child: _buildMediaPlaceholder()),
+                    Expanded(child: _buildVideoPlayer()),
                     const SizedBox(height: 10),
                     SizedBox(
                       width: double.infinity,
@@ -101,7 +160,7 @@ class DetailLessonMeditationPage extends StatelessWidget {
                           ),
                         ),
                         child: Text(
-                          isResume ? 'Tiếp tục Thiền' : 'Bắt đầu Thiền',
+                          widget.isResume ? 'Tiếp tục Thiền' : 'Bắt đầu Thiền',
                           style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
