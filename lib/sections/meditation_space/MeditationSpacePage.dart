@@ -8,141 +8,149 @@ class MeditationSpacePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6F7),
+      backgroundColor: AppColors.white,
       body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _Header(onBack: () => Navigator.of(context).maybePop()),
-              const SizedBox(height: 14),
-              const _SearchField(),
-              const SizedBox(height: 18),
-              const Text(
-                'Danh mục nổi bật',
-                style: TextStyle(
-                  fontSize: 34 / 2,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.neutral900,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Row(
-                children: [
-                  Expanded(
-                    child: _FeaturedCategoryCard(
-                      iconPath: 'assets/Icons/solar_sleeping-circle-broken.png',
-                      title: 'Giấc Ngủ',
-                      color: AppColors.meditationSpacePrimary,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+              child: _Header(onBack: () => Navigator.of(context).maybePop()),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _SearchField(),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Danh mục nổi bật',
+                      style: TextStyle(
+                        fontSize: 34 / 2,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral900,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Row(
+                      children: [
+                        Expanded(
+                          child: _FeaturedCategoryCard(
+                            iconPath: 'assets/Icons/solar_sleeping-circle-broken.png',
+                            title: 'Giấc Ngủ',
+                            color: AppColors.meditationSpacePrimary,
+                            backgroundColor: AppColors.meditationSpaceBlueBackground,
+                          ),
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: _FeaturedCategoryCard(
+                            iconPath: 'assets/Icons/Vector.png',
+                            title: 'Giảm Stress',
+                            color: AppColors.meditationSpaceOrange,
+                            backgroundColor: AppColors.meditationSpacePeachBackground,
+                          ),
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: _FeaturedCategoryCard(
+                            iconPath: 'assets/Icons/Group.png',
+                            title: 'Tập Trung',
+                            color: AppColors.meditationSpaceGreen,
+                            backgroundColor: AppColors.meditationSpaceMintBackground,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Đề xuất (Dựa trên phân tích sóng não)',
+                      style: TextStyle(
+                        fontSize: 34 / 2,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral900,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const _MeditationProgramCard(
+                      title: 'Thiền Cân Bằng Cảm Xúc',
+                      subtitle: 'Bài 1/5 của khóa học • 15 phút',
+                      backgroundColor: AppColors.white,
+                      borderColor: AppColors.meditationSpacePrimary,
+                      titleColor: AppColors.meditationSpacePrimary,
+                      buttonFilled: true,
+                      buttonColor: AppColors.meditationSpacePrimary,
+                      iconColor: AppColors.meditationSpacePrimary,
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Lộ trình Cơ Bản (Chưa hoàn thành)',
+                      style: TextStyle(
+                        fontSize: 34 / 2,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral900,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const _MeditationProgramCard(
+                      title: 'Thiền Cân Bằng Cảm Xúc',
+                      subtitle: 'Bài 1/5 của khóa học • 15 phút',
                       backgroundColor: AppColors.meditationSpaceBlueBackground,
+                      borderColor: Color(0xFFD6EEF2),
+                      titleColor: AppColors.meditationSpacePrimary,
+                      buttonFilled: false,
+                      buttonColor: AppColors.meditationSpacePrimary,
+                      iconColor: AppColors.meditationSpacePrimary,
                     ),
-                  ),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: _FeaturedCategoryCard(
-                      iconPath: 'assets/Icons/Vector.png',
-                      title: 'Giảm Stress',
-                      color: AppColors.meditationSpaceOrange,
-                      backgroundColor: AppColors.meditationSpacePeachBackground,
+                    const SizedBox(height: 10),
+                    const _MeditationProgramCard(
+                      title: 'Hít Thở Sâu 5 Phút',
+                      subtitle: 'Bài tập nhanh • 5 phút',
+                      backgroundColor: AppColors.meditationSpaceBlueBackground,
+                      borderColor: Color(0xFFD6EEF2),
+                      titleColor: AppColors.meditationSpacePrimary,
+                      buttonFilled: false,
+                      buttonColor: AppColors.meditationSpacePrimary,
+                      iconColor: AppColors.meditationSpacePrimary,
                     ),
-                  ),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: _FeaturedCategoryCard(
-                      iconPath: 'assets/Icons/Group.png',
-                      title: 'Tập Trung',
-                      color: AppColors.meditationSpaceGreen,
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Bài đã tập gần đây',
+                      style: TextStyle(
+                        fontSize: 34 / 2,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral900,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    const _MeditationProgramCard(
+                      title: 'Thiền cân bằng cảm xúc',
+                      subtitle: 'Bài 1/5 của khóa học • 15 phút',
                       backgroundColor: AppColors.meditationSpaceMintBackground,
+                      borderColor: Color(0xFFD1F5D7),
+                      titleColor: AppColors.meditationSpaceGreen,
+                      buttonFilled: true,
+                      buttonColor: Color(0xFF68D178),
+                      iconColor: AppColors.meditationSpaceGreen,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'Đề xuất (Dựa trên phân tích sóng não)',
-                style: TextStyle(
-                  fontSize: 34 / 2,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.neutral900,
+                    const SizedBox(height: 10),
+                    const _MeditationProgramCard(
+                      title: 'Hít thở sâu 5 phút',
+                      subtitle: 'Bài tập nhanh • 5 phút',
+                      backgroundColor: AppColors.meditationSpaceMintBackground,
+                      borderColor: Color(0xFFD1F5D7),
+                      titleColor: AppColors.meditationSpaceGreen,
+                      buttonFilled: true,
+                      buttonColor: Color(0xFF68D178),
+                      iconColor: AppColors.meditationSpaceGreen,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 10),
-              const _MeditationProgramCard(
-                title: 'Thiền Cân Bằng Cảm Xúc',
-                subtitle: 'Bài 1/5 của khóa học • 15 phút',
-                backgroundColor: AppColors.white,
-                borderColor: AppColors.meditationSpacePrimary,
-                titleColor: AppColors.meditationSpacePrimary,
-                buttonFilled: true,
-                buttonColor: AppColors.meditationSpacePrimary,
-                iconColor: AppColors.meditationSpacePrimary,
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Lộ trình Cơ Bản (Chưa hoàn thành)',
-                style: TextStyle(
-                  fontSize: 34 / 2,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.neutral900,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const _MeditationProgramCard(
-                title: 'Thiền Cân Bằng Cảm Xúc',
-                subtitle: 'Bài 1/5 của khóa học • 15 phút',
-                backgroundColor: AppColors.meditationSpaceBlueBackground,
-                borderColor: Color(0xFFD6EEF2),
-                titleColor: AppColors.meditationSpacePrimary,
-                buttonFilled: false,
-                buttonColor: AppColors.meditationSpacePrimary,
-                iconColor: AppColors.meditationSpacePrimary,
-              ),
-              const SizedBox(height: 10),
-              const _MeditationProgramCard(
-                title: 'Hít Thở Sâu 5 Phút',
-                subtitle: 'Bài tập nhanh • 5 phút',
-                backgroundColor: AppColors.meditationSpaceBlueBackground,
-                borderColor: Color(0xFFD6EEF2),
-                titleColor: AppColors.meditationSpacePrimary,
-                buttonFilled: false,
-                buttonColor: AppColors.meditationSpacePrimary,
-                iconColor: AppColors.meditationSpacePrimary,
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Bài đã tập gần đây',
-                style: TextStyle(
-                  fontSize: 34 / 2,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.neutral900,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const _MeditationProgramCard(
-                title: 'Thiền cân bằng cảm xúc',
-                subtitle: 'Bài 1/5 của khóa học • 15 phút',
-                backgroundColor: AppColors.meditationSpaceMintBackground,
-                borderColor: Color(0xFFD1F5D7),
-                titleColor: AppColors.meditationSpaceGreen,
-                buttonFilled: true,
-                buttonColor: Color(0xFF68D178),
-                iconColor: AppColors.meditationSpaceGreen,
-              ),
-              const SizedBox(height: 10),
-              const _MeditationProgramCard(
-                title: 'Hít thở sâu 5 phút',
-                subtitle: 'Bài tập nhanh • 5 phút',
-                backgroundColor: AppColors.meditationSpaceMintBackground,
-                borderColor: Color(0xFFD1F5D7),
-                titleColor: AppColors.meditationSpaceGreen,
-                buttonFilled: true,
-                buttonColor: Color(0xFF68D178),
-                iconColor: AppColors.meditationSpaceGreen,
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

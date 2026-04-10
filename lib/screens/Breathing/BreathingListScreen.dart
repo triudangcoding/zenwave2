@@ -154,7 +154,11 @@ class BreathingListScreen extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.90,
+      ),
       builder: (context) => BreathingDetailScreen(exercise: exercise),
     );
   }
