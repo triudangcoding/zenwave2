@@ -357,9 +357,17 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   double _betaAvg = 0;
   double _deltaAvg = 0;
   double _overallScore = 0;
+  double _eegScore = 0;
+  double _questionnaireScore = 0;
   String _evaluation = '';
   String _evaluationDetail = '';
   Color _evalColor = const Color(0xFF4F9A67);
+
+  // Questionnaire-based insights for report
+  String _sleepInsight = '';
+  String _focusInsight = '';
+  String _tensionInsight = '';
+  String _copingInsight = '';
 
   // Wave definitions
   static const Color alphaColor = Color(0xFF149A33);
@@ -402,14 +410,24 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
 
     final rng = Random();
 
-    // ── Per-session random profile ──
-    // Each session gets different base levels, ranges, and sine frequencies
-    _alphaBase = 36.0 + rng.nextDouble() * 16.0; // 36-52
-    _alphaRange = 22.0 + rng.nextDouble() * 18.0; // 22-40
-    _betaBase = 16.0 + rng.nextDouble() * 14.0; // 16-30
-    _betaRange = 18.0 + rng.nextDouble() * 18.0; // 18-36
-    _deltaBase = 4.0 + rng.nextDouble() * 8.0; // 4-12
-    _deltaRange = 12.0 + rng.nextDouble() * 14.0; // 12-26
+    // ── Questionnaire-based bias ──
+    // answers: 0 = most stressed, 4 = most relaxed
+    // avg 0→stressed profile (high beta, low alpha), avg 4→relaxed (high alpha, low beta)
+    final answers = AppStateService.quickPsychAnswers;
+    final double qAvg = answers.isEmpty
+        ? 2.0
+        : answers.fold<int>(0, (a, b) => a + b) / answers.length;
+    // qBias: -1.0 (very stressed) to +1.0 (very relaxed)
+    final double qBias = (qAvg - 2.0) / 2.0;
+
+    // ── Per-session random profile (biased by questionnaire) ──
+    // Relaxed person → alpha higher, beta lower; Stressed → opposite
+    _alphaBase = 36.0 + rng.nextDouble() * 16.0 + qBias * 8.0; // ±8 shift
+    _alphaRange = 22.0 + rng.nextDouble() * 18.0;
+    _betaBase = 16.0 + rng.nextDouble() * 14.0 - qBias * 7.0; // inverse shift
+    _betaRange = 18.0 + rng.nextDouble() * 18.0;
+    _deltaBase = 4.0 + rng.nextDouble() * 8.0 + qBias * 2.0;
+    _deltaRange = 12.0 + rng.nextDouble() * 14.0;
     _phaseShift = rng.nextDouble() * 6.28; // 0-2π
     _sineFreqAlpha = 0.15 + rng.nextDouble() * 0.35; // 0.15-0.5
     _sineFreqBeta = 0.25 + rng.nextDouble() * 0.45; // 0.25-0.7
@@ -503,45 +521,143 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         ? 0
         : _deltaPoints.reduce((a, b) => a + b) / _deltaPoints.length;
 
-    // Score: high alpha + low beta = relaxed → higher score
+    // ── EEG score: high alpha + low beta = relaxed → higher score ──
     final alphaRatio = ((_alphaAvg - 25) / 55).clamp(0.0, 1.0);
     final betaRatio = (1 - ((_betaAvg - 10) / 50)).clamp(0.0, 1.0);
-    final raw = (alphaRatio * 0.55 + betaRatio * 0.35 + 0.1) * 10;
-    _overallScore = raw.clamp(1.0, 10.0);
+    final rawEeg = (alphaRatio * 0.55 + betaRatio * 0.35 + 0.1) * 10;
+    _eegScore = rawEeg.clamp(1.0, 10.0);
 
-    // Add small noise so repeated sessions never land on same number
+    // ── Questionnaire score (0-based answers, 0=stressed, 4=relaxed) ──
+    final answers = AppStateService.quickPsychAnswers;
+    if (answers.isNotEmpty) {
+      final double avg = answers.fold<int>(0, (a, b) => a + b) / answers.length;
+      // avg 0→1.0, avg 4→10.0
+      _questionnaireScore = (1.0 + (avg / 4.0) * 9.0).clamp(1.0, 10.0);
+    } else {
+      _questionnaireScore = 5.5; // neutral fallback
+    }
+
+    // ── Blend: 60% EEG + 40% questionnaire ──
     final rng = Random();
-    _overallScore = (_overallScore + (rng.nextDouble() - 0.5) * 1.2).clamp(
-      3.5,
-      9.5,
-    );
+    final blended = _eegScore * 0.6 + _questionnaireScore * 0.4;
+    // Small noise so repeated sessions differ
+    _overallScore = (blended + (rng.nextDouble() - 0.5) * 0.8).clamp(1.5, 9.5);
     _overallScore = double.parse(_overallScore.toStringAsFixed(1));
 
+    // ── Questionnaire-based insights (per-dimension) ──
+    _deriveInsights(answers);
+
+    // ── Evaluation text ──
     if (_overallScore >= 7.5) {
       _evaluation = 'Trạng thái thư giãn';
       _evaluationDetail =
           'Sóng Alpha chiếm ưu thế rõ rệt, cho thấy bạn đang ở trạng thái '
-          'thư giãn, tập trung nhẹ nhàng. Đây là trạng thái lý tưởng cho '
-          'thiền định và sáng tạo.';
+          'thư giãn, tập trung nhẹ nhàng. Kết quả khảo sát ban đầu cũng '
+          'cho thấy bạn có nền tảng tinh thần ổn định.';
       _evalColor = const Color(0xFF149A33);
     } else if (_overallScore >= 6.0) {
       _evaluation = 'Căng thẳng nhẹ';
       _evaluationDetail =
-          'Sóng Beta tăng nhẹ so với mức nền, cho thấy bạn đang có '
-          'căng thẳng nhẹ hoặc đang trong trạng thái tập trung cao. '
-          'Khuyến nghị thực hiện một bài tập thở hoặc thiền ngắn để cân bằng.';
+          'Sóng Beta tăng nhẹ so với mức nền, kết hợp với câu trả lời khảo sát '
+          'cho thấy bạn đang có căng thẳng nhẹ. '
+          'Khuyến nghị thực hiện bài tập thở hoặc thiền ngắn để cân bằng.';
       _evalColor = const Color(0xFFF8AC14);
-    } else {
+    } else if (_overallScore >= 4.0) {
       _evaluation = 'Căng thẳng trung bình';
       _evaluationDetail =
-          'Chỉ số Beta cao liên tục, Alpha bị ức chế. Bạn nên dành thời gian '
-          'nghỉ ngơi, thực hành thiền định hoặc bài tập hít thở sâu.';
+          'Chỉ số Beta cao liên tục, Alpha bị ức chế. Dữ liệu khảo sát cho '
+          'thấy bạn có một số yếu tố gia tăng căng thẳng. Bạn nên dành thời '
+          'gian nghỉ ngơi, thực hành thiền định hoặc bài tập hít thở sâu.';
       _evalColor = const Color(0xFFE8575A);
+    } else {
+      _evaluation = 'Căng thẳng cao';
+      _evaluationDetail =
+          'Cả sóng não và câu trả lời khảo sát đều cho thấy mức căng thẳng '
+          'đáng chú ý. Đề nghị bạn dành ít nhất 15 phút mỗi ngày cho bài tập '
+          'thiền hoặc hít thở sâu, đồng thời cân nhắc tham khảo chuyên gia.';
+      _evalColor = const Color(0xFFD32F2F);
     }
 
     setState(() {
       _phase = _MeasurePhase.result;
     });
+  }
+
+  /// Derive per-dimension insights from 10 onboarding answers.
+  /// Questions: 0-mood, 1-sleep, 2-coping, 3-fatigue, 4-focus,
+  ///            5-anxiety, 6-personal time, 7-tension, 8-emotion control, 9-meditation exp
+  void _deriveInsights(List<int> answers) {
+    // Sleep insight (question 1)
+    if (answers.length > 1) {
+      final s = answers[1];
+      if (s <= 1) {
+        _sleepInsight =
+            'Chất lượng giấc ngủ kém — ảnh hưởng trực tiếp đến '
+            'sóng Delta và khả năng phục hồi của não bộ.';
+      } else if (s == 2) {
+        _sleepInsight =
+            'Giấc ngủ ở mức trung bình — cải thiện chất lượng giấc ngủ '
+            'sẽ giúp tăng sóng Alpha khi tỉnh táo.';
+      } else {
+        _sleepInsight =
+            'Giấc ngủ tốt — đây là yếu tố tích cực giúp duy trì '
+            'sóng Alpha ổn định.';
+      }
+    }
+
+    // Focus insight (question 4)
+    if (answers.length > 4) {
+      final f = answers[4];
+      if (f <= 1) {
+        _focusInsight =
+            'Khó tập trung — sóng Beta cao có thể liên quan đến '
+            'mức phân tâm bạn báo cáo.';
+      } else if (f == 2) {
+        _focusInsight =
+            'Tập trung ở mức bình thường — phù hợp với biên độ '
+            'sóng não đo được.';
+      } else {
+        _focusInsight =
+            'Tập trung tốt — sóng Alpha mạnh hỗ trợ trạng thái '
+            'tập trung hiệu quả.';
+      }
+    }
+
+    // Body tension insight (question 7)
+    if (answers.length > 7) {
+      final t = answers[7];
+      if (t <= 1) {
+        _tensionInsight =
+            'Căng cứng cơ thể thường xuyên — stress thể chất '
+            'đang phản ánh qua hoạt động Beta cao.';
+      } else if (t == 2) {
+        _tensionInsight =
+            'Căng cứng nhẹ — bài tập thư giãn cơ sẽ '
+            'hỗ trợ giảm sóng Beta.';
+      } else {
+        _tensionInsight =
+            'Cơ thể khá thư giãn — đây là dấu hiệu tốt '
+            'tương thích với mức Alpha đo được.';
+      }
+    }
+
+    // Coping method insight (question 2)
+    if (answers.length > 2) {
+      final c = answers[2];
+      if (c == 0) {
+        _copingInsight =
+            'Chưa có phương pháp giải toả — việc bắt đầu thiền '
+            'định hoặc bài tập hít thở có thể giúp cải thiện đáng kể.';
+      } else if (c <= 2) {
+        _copingInsight =
+            'Có phương pháp giải toả cơ bản — kết hợp thêm '
+            'thiền định sẽ tăng hiệu quả thư giãn.';
+      } else {
+        _copingInsight =
+            'Phương pháp giải toả tốt — thực hành thiền định '
+            'giúp duy trì sóng Alpha ổn định như đo được.';
+      }
+    }
   }
 
   void _reset() {
@@ -1055,9 +1171,56 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                   _buildMiniStat('Điểm số', _overallScore.toStringAsFixed(1)),
                 ],
               ),
+              const SizedBox(height: 12),
+              // Score breakdown
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8F9FA),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Cơ sở tính điểm',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    _scoreBreakdownRow(
+                      'Sóng não (EEG)',
+                      _eegScore,
+                      '60%',
+                      const Color(0xFF129EAF),
+                    ),
+                    const SizedBox(height: 4),
+                    _scoreBreakdownRow(
+                      'Khảo sát 10 câu hỏi',
+                      _questionnaireScore,
+                      '40%',
+                      const Color(0xFF7C4DFF),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
+        const SizedBox(height: 16),
+        // ── Questionnaire-based insights ──
+        if (_sleepInsight.isNotEmpty ||
+            _focusInsight.isNotEmpty ||
+            _tensionInsight.isNotEmpty ||
+            _copingInsight.isNotEmpty)
+          _buildInsightsCard(),
         const SizedBox(height: 20),
         _buildPrimaryButton(
           label: 'Đo lại',
@@ -1070,6 +1233,145 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   }
 
   // ── Shared widgets ───────────────────────────────────────────────────────
+
+  Widget _scoreBreakdownRow(
+    String label,
+    double score,
+    String weight,
+    Color color,
+  ) {
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: AppColors.neutral600),
+        ),
+        const Spacer(),
+        Text(
+          '${score.toStringAsFixed(1)}/10',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            weight,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInsightsCard() {
+    final insights = <_InsightItem>[
+      if (_sleepInsight.isNotEmpty)
+        _InsightItem(Icons.bedtime_outlined, 'Giấc ngủ', _sleepInsight),
+      if (_focusInsight.isNotEmpty)
+        _InsightItem(Icons.center_focus_strong, 'Tập trung', _focusInsight),
+      if (_tensionInsight.isNotEmpty)
+        _InsightItem(
+          Icons.accessibility_new,
+          'Căng cứng cơ thể',
+          _tensionInsight,
+        ),
+      if (_copingInsight.isNotEmpty)
+        _InsightItem(
+          Icons.spa_outlined,
+          'Phương pháp giải toả',
+          _copingInsight,
+        ),
+    ];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE0E0FF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.quiz_outlined, color: Color(0xFF7C4DFF), size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Phân tích từ khảo sát',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.neutral800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Kết hợp dữ liệu 10 câu hỏi trắc nghiệm ban đầu',
+            style: TextStyle(fontSize: 12, color: AppColors.neutral600),
+          ),
+          const SizedBox(height: 12),
+          ...insights.map(
+            (item) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(item.icon, size: 18, color: const Color(0xFF7C4DFF)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.title,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.neutral800,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          item.text,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.neutral700,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildLegend() {
     return Row(
@@ -1647,9 +1949,84 @@ class _InteractiveWaveChartState extends State<_InteractiveWaveChart> {
               ),
             ),
           ),
-          // Tooltip overlay
+          // Tooltip overlay (tap)
           if (_tooltipIndex != null && _tooltipIndex! < widget.alpha.length)
             _buildTooltipOverlay(),
+          // Live latest-data tooltip (top-right, during measurement)
+          if (widget.autoScrollToEnd && widget.alpha.isNotEmpty)
+            _buildLiveTooltip(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveTooltip() {
+    final int i = widget.alpha.length - 1;
+    final a = widget.alpha[i];
+    final b = i < widget.beta.length ? widget.beta[i] : 0.0;
+    final d = i < widget.delta.length ? widget.delta[i] : 0.0;
+
+    return Positioned(
+      right: 6,
+      top: 6,
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xF0FFFFFF),
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x18000000),
+                blurRadius: 6,
+                offset: Offset(0, 1),
+              ),
+            ],
+            border: Border.all(color: const Color(0xFFE8E8E8)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${(i / 2).toStringAsFixed(1)}s',
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w500,
+                  color: AppColors.neutral600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              _liveRow('A', a, const Color(0xFF149A33)),
+              _liveRow('B', b, const Color(0xFF009CC4)),
+              _liveRow('D', d, const Color(0xFFE8575A)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _liveRow(String tag, double value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 1),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 5,
+            height: 5,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '$tag ${value.toStringAsFixed(1)}',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
         ],
       ),
     );
@@ -1729,6 +2106,15 @@ class _InteractiveWaveChartState extends State<_InteractiveWaveChart> {
       ),
     );
   }
+}
+
+// ── Insight item data ─────────────────────────────────────────────────────
+
+class _InsightItem {
+  const _InsightItem(this.icon, this.title, this.text);
+  final IconData icon;
+  final String title;
+  final String text;
 }
 
 // ── Stress zone data ──────────────────────────────────────────────────────
