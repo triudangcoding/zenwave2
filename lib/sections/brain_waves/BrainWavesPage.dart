@@ -1,0 +1,1869 @@
+import 'dart:async';
+import 'dart:math';
+
+import 'package:flutter/material.dart';
+
+import '../../core/theme/app_colors.dart';
+import '../../services/app_state_service.dart';
+import '../../services/ble_service.dart';
+
+class BrainWavesPage extends StatefulWidget {
+  const BrainWavesPage({super.key});
+
+  @override
+  State<BrainWavesPage> createState() => _BrainWavesPageState();
+}
+
+class _BrainWavesPageState extends State<BrainWavesPage> {
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppStateService.deviceConnectedNotifier,
+      builder: (_, connected, __) {
+        if (connected) {
+          return const _BrainMeasurementView();
+        }
+        return const _BleConnectView();
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// View 1: BLE connection flow
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BleConnectView extends StatefulWidget {
+  const _BleConnectView();
+
+  @override
+  State<_BleConnectView> createState() => _BleConnectViewState();
+}
+
+class _BleConnectViewState extends State<_BleConnectView> {
+  final BleService _ble = BleService.instance;
+  bool _isConnecting = false;
+  String? _error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: Column(
+            children: [
+              const SizedBox(height: 24),
+              // Header
+              const Text(
+                'Sóng não',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.neutral900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Kết nối thiết bị ESP32 BLE\nđể bắt đầu đo sóng não',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: AppColors.neutral600,
+                  height: 1.5,
+                ),
+              ),
+              const Spacer(flex: 2),
+              // Circle icon
+              Container(
+                width: 180,
+                height: 180,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFA7F0F1), width: 5),
+                ),
+                child: Center(
+                  child: Container(
+                    width: 130,
+                    height: 130,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Color(0xFF00B3BF),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.bluetooth_searching,
+                        color: Colors.white,
+                        size: 52,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+              // Status text
+              Text(
+                _isConnecting ? 'Đang tìm thiết bị...' : 'CHƯA KẾT NỐI',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                  color: _isConnecting
+                      ? AppColors.orange600
+                      : const Color(0xFF4F9A67),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: AppColors.red600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              const Text(
+                'Hãy bật Bluetooth và đảm bảo thiết bị\nESP32 đang hoạt động gần bạn.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.neutral600,
+                  height: 1.5,
+                ),
+              ),
+              const Spacer(flex: 2),
+              // Scan results
+              ValueListenableBuilder<List<BleDeviceInfo>>(
+                valueListenable: _ble.scanResultsNotifier,
+                builder: (_, devices, __) {
+                  if (devices.isEmpty) return const SizedBox.shrink();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Thiết bị tìm thấy:',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.neutral700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...devices.map(
+                        (d) => _DeviceTile(
+                          device: d,
+                          onTap: () => _connectDevice(d),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  );
+                },
+              ),
+              // Scan button
+              SizedBox(
+                width: double.infinity,
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: _ble.isScanningNotifier,
+                  builder: (_, scanning, __) {
+                    return ElevatedButton.icon(
+                      onPressed: scanning || _isConnecting ? null : _startScan,
+                      icon: scanning
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.bluetooth_searching),
+                      label: Text(
+                        scanning ? 'Đang quét...' : 'Quét thiết bị BLE',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF129EAF),
+                        foregroundColor: AppColors.white,
+                        minimumSize: const Size.fromHeight(54),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _startScan() async {
+    setState(() {
+      _error = null;
+    });
+    try {
+      await _ble.startScan();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Không thể quét: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _connectDevice(BleDeviceInfo device) async {
+    setState(() {
+      _isConnecting = true;
+      _error = null;
+    });
+    try {
+      await _ble.connect(device);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Kết nối thất bại: $e';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isConnecting = false;
+        });
+      }
+    }
+  }
+}
+
+class _DeviceTile extends StatelessWidget {
+  const _DeviceTile({required this.device, required this.onTap});
+
+  final BleDeviceInfo device;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                const Icon(Icons.bluetooth, color: Color(0xFF129EAF), size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    device.name,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.neutral800,
+                    ),
+                  ),
+                ),
+                if (device.rssi != null)
+                  Text(
+                    '${device.rssi} dBm',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.neutral500,
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.arrow_forward_ios,
+                  size: 14,
+                  color: AppColors.neutral400,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// View 2: Connected – brain wave measurement (mock)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum _MeasurePhase { idle, preparing, measuring, result }
+
+class _BrainMeasurementView extends StatefulWidget {
+  const _BrainMeasurementView();
+
+  @override
+  State<_BrainMeasurementView> createState() => _BrainMeasurementViewState();
+}
+
+class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
+  _MeasurePhase _phase = _MeasurePhase.idle;
+  Timer? _phaseTimer;
+  Timer? _chartTimer;
+  Timer? _signalResumeTimer;
+
+  // Prepare countdown
+  int _prepCountdown = 5;
+
+  // Measuring progress
+  int _elapsedSeconds = 0;
+  static const int _measureDurationSec = 35;
+
+  // Live chart data (all points stored for scrollable chart)
+  final List<double> _alphaPoints = [];
+  final List<double> _betaPoints = [];
+  final List<double> _deltaPoints = [];
+
+  // ── Per-session random profile (makes each run unique) ──
+  late double _alphaBase;
+  late double _alphaRange;
+  late double _betaBase;
+  late double _betaRange;
+  late double _deltaBase;
+  late double _deltaRange;
+  late double _phaseShift;
+  late double _sineFreqAlpha;
+  late double _sineFreqBeta;
+  late double _sineFreqDelta;
+
+  // ── Weak-signal pause state ──
+  bool _signalWeak = false;
+  int _ticksSinceLastPause = 0;
+  late int _nextPauseTick; // random tick count until next pause
+
+  // Final mock results
+  double _alphaAvg = 0;
+  double _betaAvg = 0;
+  double _deltaAvg = 0;
+  double _overallScore = 0;
+  String _evaluation = '';
+  String _evaluationDetail = '';
+  Color _evalColor = const Color(0xFF4F9A67);
+
+  // Wave definitions
+  static const Color alphaColor = Color(0xFF149A33);
+  static const Color betaColor = Color(0xFF009CC4);
+  static const Color deltaColor = Color(0xFFE8575A);
+
+  @override
+  void dispose() {
+    _phaseTimer?.cancel();
+    _chartTimer?.cancel();
+    _signalResumeTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startFlow() {
+    setState(() {
+      _phase = _MeasurePhase.preparing;
+      _prepCountdown = 5;
+    });
+    _phaseTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _prepCountdown--;
+      });
+      if (_prepCountdown <= 0) {
+        timer.cancel();
+        _beginMeasuring();
+      }
+    });
+  }
+
+  void _beginMeasuring() {
+    _alphaPoints.clear();
+    _betaPoints.clear();
+    _deltaPoints.clear();
+    _elapsedSeconds = 0;
+
+    final rng = Random();
+
+    // ── Per-session random profile ──
+    // Each session gets different base levels, ranges, and sine frequencies
+    _alphaBase = 36.0 + rng.nextDouble() * 16.0; // 36-52
+    _alphaRange = 22.0 + rng.nextDouble() * 18.0; // 22-40
+    _betaBase = 16.0 + rng.nextDouble() * 14.0; // 16-30
+    _betaRange = 18.0 + rng.nextDouble() * 18.0; // 18-36
+    _deltaBase = 4.0 + rng.nextDouble() * 8.0; // 4-12
+    _deltaRange = 12.0 + rng.nextDouble() * 14.0; // 12-26
+    _phaseShift = rng.nextDouble() * 6.28; // 0-2π
+    _sineFreqAlpha = 0.15 + rng.nextDouble() * 0.35; // 0.15-0.5
+    _sineFreqBeta = 0.25 + rng.nextDouble() * 0.45; // 0.25-0.7
+    _sineFreqDelta = 0.1 + rng.nextDouble() * 0.25; // 0.1-0.35
+
+    // ── Weak-signal pause scheduling ──
+    _signalWeak = false;
+    _ticksSinceLastPause = 0;
+    _nextPauseTick = 14 + rng.nextInt(16); // first pause after 7-15s
+
+    setState(() {
+      _phase = _MeasurePhase.measuring;
+    });
+
+    // Generate live data every 500ms → 2 points/sec, 35s = ~70 ticks
+    _chartTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      // ── Weak-signal pause check ──
+      if (_signalWeak) return; // paused, skip data generation
+
+      _ticksSinceLastPause++;
+      if (_ticksSinceLastPause >= _nextPauseTick &&
+          _elapsedSeconds < _measureDurationSec - 4) {
+        // Trigger weak signal pause
+        _ticksSinceLastPause = 0;
+        _nextPauseTick = 20 + rng.nextInt(20); // next pause after 10-20s
+        setState(() {
+          _signalWeak = true;
+        });
+        // Resume after 1.5s
+        _signalResumeTimer?.cancel();
+        _signalResumeTimer = Timer(const Duration(milliseconds: 1500), () {
+          if (mounted) {
+            setState(() {
+              _signalWeak = false;
+            });
+          }
+        });
+        return;
+      }
+
+      // ── Generate data with session-unique profile ──
+      final t = _alphaPoints.length.toDouble();
+      final alpha = _alphaBase +
+          rng.nextDouble() * _alphaRange +
+          sin(t * _sineFreqAlpha + _phaseShift) * (6 + rng.nextDouble() * 6);
+      final beta = _betaBase +
+          rng.nextDouble() * _betaRange +
+          sin(t * _sineFreqBeta + _phaseShift * 1.3) *
+              (4 + rng.nextDouble() * 5);
+      final delta = _deltaBase +
+          rng.nextDouble() * _deltaRange +
+          sin(t * _sineFreqDelta + _phaseShift * 0.7) *
+              (3 + rng.nextDouble() * 4);
+
+      setState(() {
+        _alphaPoints.add(alpha.clamp(0, 100));
+        _betaPoints.add(beta.clamp(0, 100));
+        _deltaPoints.add(delta.clamp(0, 100));
+      });
+
+      // Increment seconds every 2 ticks (500ms * 2)
+      if (timer.tick % 2 == 0) {
+        _elapsedSeconds++;
+        if (mounted) setState(() {});
+      }
+
+      if (_elapsedSeconds >= _measureDurationSec) {
+        timer.cancel();
+        _finishMeasurement();
+      }
+    });
+  }
+
+  void _finishMeasurement() {
+    // Compute averages from accumulated points
+    _alphaAvg = _alphaPoints.isEmpty
+        ? 0
+        : _alphaPoints.reduce((a, b) => a + b) / _alphaPoints.length;
+    _betaAvg = _betaPoints.isEmpty
+        ? 0
+        : _betaPoints.reduce((a, b) => a + b) / _betaPoints.length;
+    _deltaAvg = _deltaPoints.isEmpty
+        ? 0
+        : _deltaPoints.reduce((a, b) => a + b) / _deltaPoints.length;
+
+    // Score: high alpha + low beta = relaxed → higher score
+    final alphaRatio = ((_alphaAvg - 25) / 55).clamp(0.0, 1.0);
+    final betaRatio = (1 - ((_betaAvg - 10) / 50)).clamp(0.0, 1.0);
+    final raw = (alphaRatio * 0.55 + betaRatio * 0.35 + 0.1) * 10;
+    _overallScore = raw.clamp(1.0, 10.0);
+
+    // Add small noise so repeated sessions never land on same number
+    final rng = Random();
+    _overallScore = (_overallScore + (rng.nextDouble() - 0.5) * 1.2)
+        .clamp(3.5, 9.5);
+    _overallScore = double.parse(_overallScore.toStringAsFixed(1));
+
+    if (_overallScore >= 7.5) {
+      _evaluation = 'Trạng thái thư giãn';
+      _evaluationDetail =
+          'Sóng Alpha chiếm ưu thế rõ rệt, cho thấy bạn đang ở trạng thái '
+          'thư giãn, tập trung nhẹ nhàng. Đây là trạng thái lý tưởng cho '
+          'thiền định và sáng tạo.';
+      _evalColor = const Color(0xFF149A33);
+    } else if (_overallScore >= 6.0) {
+      _evaluation = 'Căng thẳng nhẹ';
+      _evaluationDetail =
+          'Sóng Beta tăng nhẹ so với mức nền, cho thấy bạn đang có '
+          'căng thẳng nhẹ hoặc đang trong trạng thái tập trung cao. '
+          'Khuyến nghị thực hiện một bài tập thở hoặc thiền ngắn để cân bằng.';
+      _evalColor = const Color(0xFFF8AC14);
+    } else {
+      _evaluation = 'Căng thẳng trung bình';
+      _evaluationDetail =
+          'Chỉ số Beta cao liên tục, Alpha bị ức chế. Bạn nên dành thời gian '
+          'nghỉ ngơi, thực hành thiền định hoặc bài tập hít thở sâu.';
+      _evalColor = const Color(0xFFE8575A);
+    }
+
+    setState(() {
+      _phase = _MeasurePhase.result;
+    });
+  }
+
+  void _reset() {
+    _phaseTimer?.cancel();
+    _chartTimer?.cancel();
+    _signalResumeTimer?.cancel();
+    setState(() {
+      _phase = _MeasurePhase.idle;
+      _alphaPoints.clear();
+      _betaPoints.clear();
+      _deltaPoints.clear();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String deviceName =
+        AppStateService.connectedDeviceName ?? 'ESP32S3_TOUCH';
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 8),
+              // ── Header ──
+              const Center(
+                child: Text(
+                  'Sóng não',
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.neutral900,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              // ── Device card ──
+              _buildDeviceCard(deviceName),
+              const SizedBox(height: 20),
+              // ── Phase content ──
+              if (_phase == _MeasurePhase.idle) _buildIdle(),
+              if (_phase == _MeasurePhase.preparing) _buildPreparing(),
+              if (_phase == _MeasurePhase.measuring) _buildMeasuring(),
+              if (_phase == _MeasurePhase.result) _buildResult(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Device card ──────────────────────────────────────────────────────────
+
+  Widget _buildDeviceCard(String deviceName) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFEAEAEA)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFFE0F7F7),
+            ),
+            child: const Icon(
+              Icons.bluetooth_connected,
+              color: Color(0xFF129EAF),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  deviceName,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.neutral800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0xFF4F9A67),
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    const Text(
+                      'Đã kết nối',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF4F9A67),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: _phase == _MeasurePhase.measuring
+                ? null
+                : () async {
+                    _reset();
+                    await BleService.instance.disconnect();
+                  },
+            child: Text(
+              'Ngắt kết nối',
+              style: TextStyle(
+                fontSize: 12,
+                color: _phase == _MeasurePhase.measuring
+                    ? AppColors.neutral400
+                    : AppColors.red600,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Phase: Idle ──────────────────────────────────────────────────────────
+
+  Widget _buildIdle() {
+    return Column(
+      children: [
+        const SizedBox(height: 40),
+        Center(
+          child: Container(
+            width: 140,
+            height: 140,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFE0F7F7), Color(0xFFB2EBF2)],
+              ),
+              border: Border.all(color: const Color(0xFF80DEEA), width: 3),
+            ),
+            child: const Icon(
+              Icons.waves_rounded,
+              size: 60,
+              color: Color(0xFF129EAF),
+            ),
+          ),
+        ),
+        const SizedBox(height: 28),
+        const Text(
+          'Sẵn sàng đo sóng não',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: AppColors.neutral800,
+          ),
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'Thiết bị đã được kết nối thành công.\nBấm nút bên dưới để bắt đầu quá trình đo.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 14,
+            color: AppColors.neutral600,
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 36),
+        _buildPrimaryButton(
+          label: 'Đo sóng não',
+          icon: Icons.waves,
+          onPressed: _startFlow,
+        ),
+      ],
+    );
+  }
+
+  // ── Phase: Preparing ─────────────────────────────────────────────────────
+
+  Widget _buildPreparing() {
+    return Column(
+      children: [
+        const SizedBox(height: 24),
+        // Illustration
+        Center(
+          child: Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFFFFF8E1),
+              border: Border.all(color: const Color(0xFFFFE082), width: 3),
+            ),
+            child: const Icon(
+              Icons.headset_rounded,
+              size: 52,
+              color: Color(0xFFF8AC14),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'Chuẩn bị đo',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: AppColors.neutral800,
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Instructions card
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFEAEAEA)),
+          ),
+          child: const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _PrepStep(
+                index: 1,
+                text: 'Đeo băng đô lên trán, đảm bảo các điện cực tiếp xúc da.',
+              ),
+              SizedBox(height: 10),
+              _PrepStep(
+                index: 2,
+                text: 'Ngồi thoải mái, giữ yên cơ thể và thả lỏng cơ mặt.',
+              ),
+              SizedBox(height: 10),
+              _PrepStep(
+                index: 3,
+                text:
+                    'Nhắm mắt nhẹ nhàng, hít thở đều khi quá trình đo bắt đầu.',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 28),
+        // Countdown
+        Text(
+          'Bắt đầu sau $_prepCountdown giây...',
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFFF8AC14),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: 200,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: 1 - (_prepCountdown / 5),
+              minHeight: 6,
+              backgroundColor: const Color(0xFFE8E8E8),
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                Color(0xFFF8AC14),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Phase: Measuring ─────────────────────────────────────────────────────
+
+  Widget _buildMeasuring() {
+    final progress = _elapsedSeconds / _measureDurationSec;
+    final remaining = _measureDurationSec - _elapsedSeconds;
+
+    return Column(
+      children: [
+        const SizedBox(height: 8),
+        // Timer + progress
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Đang đo sóng não',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: AppColors.neutral800,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE0F7F7),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${remaining}s còn lại',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF129EAF),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: progress.clamp(0.0, 1.0),
+            minHeight: 5,
+            backgroundColor: const Color(0xFFE0E0E0),
+            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF129EAF)),
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Live chart (scrollable)
+        _InteractiveWaveChart(
+          alpha: _alphaPoints,
+          beta: _betaPoints,
+          delta: _deltaPoints,
+          height: 220,
+          pointsPerScreen: 40,
+          autoScrollToEnd: true,
+        ),
+        const SizedBox(height: 12),
+        // Weak signal warning
+        if (_signalWeak)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF3E0),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFFFCC80)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.signal_cellular_connected_no_internet_0_bar,
+                    size: 18, color: Color(0xFFEF6C00)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Tín hiệu yếu — vui lòng ngồi yên...',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFE65100),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        // Legend
+        _buildLegend(),
+        const SizedBox(height: 20),
+        Text(
+          _signalWeak
+              ? 'Đang khôi phục kết nối...'
+              : 'Vui lòng giữ yên và nhắm mắt...',
+          style: TextStyle(fontSize: 14, color: AppColors.neutral600),
+        ),
+      ],
+    );
+  }
+
+  // ── Phase: Result ────────────────────────────────────────────────────────
+
+  Widget _buildResult() {
+    return Column(
+      children: [
+        const SizedBox(height: 4),
+        // Score badge
+        Center(
+          child: Container(
+            width: 110,
+            height: 110,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _evalColor.withValues(alpha: 0.1),
+              border: Border.all(
+                color: _evalColor.withValues(alpha: 0.4),
+                width: 4,
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _overallScore.toStringAsFixed(1),
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w800,
+                    color: _evalColor,
+                  ),
+                ),
+                Text(
+                  '/ 10',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: _evalColor.withValues(alpha: 0.7),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          _evaluation,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: _evalColor,
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Chart snapshot (scrollable)
+        _InteractiveWaveChart(
+          alpha: _alphaPoints,
+          beta: _betaPoints,
+          delta: _deltaPoints,
+          height: 200,
+          pointsPerScreen: 40,
+          autoScrollToEnd: false,
+        ),
+        const SizedBox(height: 10),
+        _buildLegend(),
+        const SizedBox(height: 16),
+        // ── Stress scale ──
+        _buildStressScale(),
+        const SizedBox(height: 16),
+        // Wave averages
+        _buildWaveAvgCard('Alpha', '8 – 13 Hz', _alphaAvg, alphaColor),
+        const SizedBox(height: 8),
+        _buildWaveAvgCard('Beta', '13 – 30 Hz', _betaAvg, betaColor),
+        const SizedBox(height: 8),
+        _buildWaveAvgCard('Delta', '0.5 – 4 Hz', _deltaAvg, deltaColor),
+        const SizedBox(height: 16),
+        // Evaluation report
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFEAEAEA)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.assessment_outlined, color: _evalColor, size: 20),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Báo cáo phân tích',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.neutral800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                _evaluationDetail,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppColors.neutral700,
+                  height: 1.6,
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Quick stats row
+              Row(
+                children: [
+                  _buildMiniStat('Thời gian đo', '${_measureDurationSec}s'),
+                  const SizedBox(width: 12),
+                  _buildMiniStat('Mẫu thu thập', '${_alphaPoints.length}'),
+                  const SizedBox(width: 12),
+                  _buildMiniStat('Điểm số', _overallScore.toStringAsFixed(1)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _buildPrimaryButton(
+          label: 'Đo lại',
+          icon: Icons.refresh,
+          onPressed: _reset,
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  // ── Shared widgets ───────────────────────────────────────────────────────
+
+  Widget _buildLegend() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: const [
+        _LegendDot(color: alphaColor, label: 'Alpha (8-13Hz)'),
+        SizedBox(width: 16),
+        _LegendDot(color: betaColor, label: 'Beta (13-30Hz)'),
+        SizedBox(width: 16),
+        _LegendDot(color: deltaColor, label: 'Delta (0.5-4Hz)'),
+      ],
+    );
+  }
+
+  // ── Stress scale (same style as HomePage) ───────────────────────────────
+
+  Widget _buildStressScale() {
+    // Convert _overallScore (1-10 relaxation) to stress (inverted)
+    final int stressInt = (11 - _overallScore).round().clamp(1, 10);
+
+    const List<_StressZone> zones = [
+      _StressZone(label: 'Bình tĩnh', range: '1–2', from: 1, to: 2, color: Color(0xFF22C55E)),
+      _StressZone(label: 'Bình thường', range: '3–4', from: 3, to: 4, color: Color(0xFF86EFAC)),
+      _StressZone(label: 'Nhẹ', range: '5–6', from: 5, to: 6, color: Color(0xFFFACC15)),
+      _StressZone(label: 'Vừa', range: '7–8', from: 7, to: 8, color: Color(0xFFF97316)),
+      _StressZone(label: 'Cao', range: '9–10', from: 9, to: 10, color: Color(0xFFEF4444)),
+    ];
+
+    Color stressColor(int s) {
+      if (s <= 2) return const Color(0xFF22C55E);
+      if (s <= 4) return const Color(0xFF65A30D);
+      if (s <= 6) return const Color(0xFFCA8A04);
+      if (s <= 8) return const Color(0xFFF97316);
+      return const Color(0xFFEF4444);
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFEAEAEA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text(
+                'Mức độ căng thẳng',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.neutral900,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: stressColor(stressInt).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: stressColor(stressInt).withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Text(
+                  '$stressInt / 10',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: stressColor(stressInt),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Gradient bar with pointer
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final double barWidth = constraints.maxWidth;
+              final double thumbX = ((stressInt - 1) / 9) * barWidth;
+
+              return Column(
+                children: [
+                  // Pointer label
+                  Padding(
+                    padding: EdgeInsets.only(
+                      left: (thumbX - 18).clamp(0, barWidth - 36),
+                    ),
+                    child: Container(
+                      width: 36,
+                      height: 24,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: stressColor(stressInt),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '$stressInt',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // Gradient bar
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      height: 18,
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Color(0xFF22C55E),
+                            Color(0xFF86EFAC),
+                            Color(0xFFFACC15),
+                            Color(0xFFF97316),
+                            Color(0xFFEF4444),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Ticks 1-10
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: List<Widget>.generate(10, (i) {
+                        final int val = i + 1;
+                        final bool active = stressInt == val;
+                        return Text(
+                          '$val',
+                          style: TextStyle(
+                            fontSize: active ? 13 : 11,
+                            fontWeight: active ? FontWeight.w800 : FontWeight.w400,
+                            color: active ? stressColor(stressInt) : AppColors.neutral500,
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 14),
+          // Zone chips
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: zones.map((zone) {
+              final bool active = stressInt >= zone.from && stressInt <= zone.to;
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: active ? zone.color.withValues(alpha: 0.18) : AppColors.neutral100,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: active ? zone.color : AppColors.neutral200,
+                    width: active ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: active ? zone.color : AppColors.neutral300,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${zone.label} (${zone.range})',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: active ? FontWeight.w700 : FontWeight.w400,
+                        color: active ? zone.color : AppColors.neutral600,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWaveAvgCard(String name, String freq, double avg, Color color) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFEAEAEA)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+                Text(
+                  freq,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.neutral500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '${avg.toStringAsFixed(1)} µV',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.neutral800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniStat(String label, String value) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.neutral800,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 10, color: AppColors.neutral500),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrimaryButton({
+    required String label,
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon),
+        label: Text(
+          label,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF129EAF),
+          foregroundColor: AppColors.white,
+          minimumSize: const Size.fromHeight(54),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          elevation: 0,
+        ),
+      ),
+    );
+  }
+}
+
+// ── Preparation step widget ───────────────────────────────────────────────
+
+class _PrepStep extends StatelessWidget {
+  const _PrepStep({required this.index, required this.text});
+
+  final int index;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 24,
+          height: 24,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Color(0xFFE0F7F7),
+          ),
+          child: Center(
+            child: Text(
+              '$index',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF129EAF),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppColors.neutral700,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Legend dot ─────────────────────────────────────────────────────────────
+
+class _LegendDot extends StatelessWidget {
+  const _LegendDot({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: AppColors.neutral600),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Scrollable interactive wave chart ──────────────────────────────────────
+
+class _InteractiveWaveChart extends StatefulWidget {
+  const _InteractiveWaveChart({
+    required this.alpha,
+    required this.beta,
+    required this.delta,
+    required this.height,
+    this.pointsPerScreen = 40,
+    this.autoScrollToEnd = false,
+  });
+
+  final List<double> alpha;
+  final List<double> beta;
+  final List<double> delta;
+  final double height;
+  final int pointsPerScreen;
+  final bool autoScrollToEnd;
+
+  @override
+  State<_InteractiveWaveChart> createState() => _InteractiveWaveChartState();
+}
+
+class _InteractiveWaveChartState extends State<_InteractiveWaveChart> {
+  final ScrollController _scrollController = ScrollController();
+  int? _tooltipIndex;
+  double _tooltipDx = 0;
+  double _tooltipDy = 0;
+
+  static const double _pointSpacing = 22.0;
+  static const double _yLabelWidth = 30.0;
+
+  double get _chartWidth {
+    final int maxLen = [
+      widget.alpha.length,
+      widget.beta.length,
+      widget.delta.length,
+    ].reduce((a, b) => a > b ? a : b);
+    return (maxLen * _pointSpacing).clamp(300, double.infinity);
+  }
+
+  @override
+  void didUpdateWidget(covariant _InteractiveWaveChart old) {
+    super.didUpdateWidget(old);
+    if (widget.autoScrollToEnd) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _handleTapUp(TapUpDetails details) {
+    final dx = details.localPosition.dx + _scrollController.offset;
+    final maxLen = widget.alpha.length;
+    if (maxLen == 0) return;
+
+    final int idx = (dx / _pointSpacing).round().clamp(0, maxLen - 1);
+    setState(() {
+      _tooltipIndex = _tooltipIndex == idx ? null : idx;
+      _tooltipDx = details.localPosition.dx + _yLabelWidth;
+      _tooltipDy = details.localPosition.dy;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cw = _chartWidth;
+    final double chartH = widget.height - 28;
+
+    return Container(
+      width: double.infinity,
+      height: widget.height,
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFEAEAEA)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Row(
+            children: [
+              // ── Sticky Y-axis labels ──
+              Container(
+                width: _yLabelWidth,
+                padding: const EdgeInsets.only(top: 16, bottom: 12),
+                color: AppColors.white,
+                child: CustomPaint(
+                  size: Size(_yLabelWidth, chartH),
+                  painter: _YAxisLabelPainter(),
+                ),
+              ),
+              // ── Scrollable chart area ──
+              Expanded(
+                child: GestureDetector(
+                  onTapUp: _handleTapUp,
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.fromLTRB(4, 16, 14, 12),
+                    child: SizedBox(
+                      width: cw,
+                      height: chartH,
+                      child: CustomPaint(
+                        size: Size(cw, chartH),
+                        painter: _WaveChartPainter(
+                          alpha: widget.alpha,
+                          beta: widget.beta,
+                          delta: widget.delta,
+                          pointSpacing: _pointSpacing,
+                          tooltipIndex: _tooltipIndex,
+                          drawYLabels: false,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          // Sticky Y-axis overlay to cover scroll bleed
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: _yLabelWidth,
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                border: Border(
+                  right: BorderSide(color: const Color(0xFFEEEEEE), width: 0.5),
+                ),
+              ),
+              padding: const EdgeInsets.only(top: 16, bottom: 12),
+              child: CustomPaint(
+                size: Size(_yLabelWidth, chartH),
+                painter: _YAxisLabelPainter(),
+              ),
+            ),
+          ),
+          // Tooltip overlay
+          if (_tooltipIndex != null && _tooltipIndex! < widget.alpha.length)
+            _buildTooltipOverlay(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTooltipOverlay() {
+    final int i = _tooltipIndex!;
+    final a = i < widget.alpha.length ? widget.alpha[i] : 0.0;
+    final b = i < widget.beta.length ? widget.beta[i] : 0.0;
+    final d = i < widget.delta.length ? widget.delta[i] : 0.0;
+
+    final double left = _tooltipDx.clamp(8, 200);
+    final double top = _tooltipDy;
+
+    return Positioned(
+      left: left,
+      top: top < widget.height / 2 ? top + 10 : top - 90,
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xF0FFFFFF),
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x20000000),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
+            border: Border.all(color: const Color(0xFFE0E0E0)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Mẫu #${i + 1} · ${(i / 2).toStringAsFixed(1)}s',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.neutral600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              _tooltipRow('Alpha', a, const Color(0xFF149A33)),
+              _tooltipRow('Beta', b, const Color(0xFF009CC4)),
+              _tooltipRow('Delta', d, const Color(0xFFE8575A)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tooltipRow(String label, double value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            '$label: ${value.toStringAsFixed(1)} µV',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Stress zone data ──────────────────────────────────────────────────────
+
+class _StressZone {
+  const _StressZone({
+    required this.label,
+    required this.range,
+    required this.from,
+    required this.to,
+    required this.color,
+  });
+
+  final String label;
+  final String range;
+  final int from;
+  final int to;
+  final Color color;
+}
+
+// ── Wave chart painter (scrollable, with tooltip support) ─────────────────
+
+class _YAxisLabelPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    const labels = ['100', '75', '50', '25', '0'];
+    for (int i = 0; i < labels.length; i++) {
+      final y = size.height * i / 4;
+      final tp = TextPainter(
+        text: TextSpan(
+          text: labels[i],
+          style: const TextStyle(fontSize: 9, color: Color(0xFFB0B0B0)),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset(size.width - tp.width - 4, y - tp.height / 2));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter old) => false;
+}
+
+class _WaveChartPainter extends CustomPainter {
+  _WaveChartPainter({
+    required this.alpha,
+    required this.beta,
+    required this.delta,
+    required this.pointSpacing,
+    this.tooltipIndex,
+    this.drawYLabels = true,
+  });
+
+  final List<double> alpha;
+  final List<double> beta;
+  final List<double> delta;
+  final double pointSpacing;
+  final int? tooltipIndex;
+  final bool drawYLabels;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = const Color(0xFFEEEEEE)
+      ..strokeWidth = 0.5;
+
+    for (int i = 0; i <= 4; i++) {
+      final y = size.height * i / 4;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    // Y-axis labels (only if not using sticky labels)
+    if (drawYLabels) {
+      const labels = ['100', '75', '50', '25', '0'];
+      for (int i = 0; i < labels.length; i++) {
+        final y = size.height * i / 4;
+        final tp = TextPainter(
+          text: TextSpan(
+            text: labels[i],
+            style: const TextStyle(fontSize: 9, color: Color(0xFFB0B0B0)),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(canvas, Offset(0, y - tp.height / 2));
+      }
+    }
+
+    // X-axis time ticks every 10 data points (~5s)
+    final int maxLen = [alpha.length, beta.length, delta.length]
+        .reduce((a, b) => a > b ? a : b);
+    for (int i = 0; i < maxLen; i += 10) {
+      final x = i * pointSpacing;
+      canvas.drawLine(
+        Offset(x, size.height),
+        Offset(x, size.height - 4),
+        gridPaint..strokeWidth = 1,
+      );
+      final sec = (i / 2).toStringAsFixed(0);
+      final tp = TextPainter(
+        text: TextSpan(
+          text: '${sec}s',
+          style: const TextStyle(fontSize: 8, color: Color(0xFFB0B0B0)),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset(x - tp.width / 2, size.height - tp.height));
+    }
+
+    // Draw waves
+    _drawLine(canvas, size, alpha, const Color(0xFF149A33));
+    _drawLine(canvas, size, beta, const Color(0xFF009CC4));
+    _drawLine(canvas, size, delta, const Color(0xFFE8575A));
+
+    // Tooltip vertical line + dots
+    if (tooltipIndex != null && tooltipIndex! < maxLen) {
+      final tx = tooltipIndex! * pointSpacing;
+      final linePaint = Paint()
+        ..color = const Color(0x40000000)
+        ..strokeWidth = 1;
+      canvas.drawLine(Offset(tx, 0), Offset(tx, size.height), linePaint);
+
+      void drawDot(List<double> data, Color c) {
+        if (tooltipIndex! < data.length) {
+          final dy = size.height - (data[tooltipIndex!] / 100 * size.height);
+          canvas.drawCircle(
+            Offset(tx, dy),
+            4,
+            Paint()
+              ..color = c
+              ..style = PaintingStyle.fill,
+          );
+          canvas.drawCircle(
+            Offset(tx, dy),
+            4,
+            Paint()
+              ..color = Colors.white
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.5,
+          );
+        }
+      }
+
+      drawDot(alpha, const Color(0xFF149A33));
+      drawDot(beta, const Color(0xFF009CC4));
+      drawDot(delta, const Color(0xFFE8575A));
+    }
+  }
+
+  void _drawLine(Canvas canvas, Size size, List<double> data, Color color) {
+    if (data.length < 2) return;
+
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke
+      ..strokeJoin = StrokeJoin.round;
+
+    final path = Path();
+
+    for (int i = 0; i < data.length; i++) {
+      final x = i * pointSpacing;
+      final y = size.height - (data[i] / 100 * size.height);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        final prevX = (i - 1) * pointSpacing;
+        final prevY = size.height - (data[i - 1] / 100 * size.height);
+        final cpx = (prevX + x) / 2;
+        path.cubicTo(cpx, prevY, cpx, y, x, y);
+      }
+    }
+
+    canvas.drawPath(path, paint);
+
+    final fillPaint = Paint()
+      ..color = color.withValues(alpha: 0.06)
+      ..style = PaintingStyle.fill;
+
+    final fillPath = Path.from(path)
+      ..lineTo((data.length - 1) * pointSpacing, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    canvas.drawPath(fillPath, fillPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _WaveChartPainter old) => true;
+}

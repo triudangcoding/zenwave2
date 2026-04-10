@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/navigation/tab_navigation_controller.dart';
 import 'core/theme/app_colors.dart';
 import 'screens/onboarding/WelcomeOnboardingScreen.dart';
-import 'sections/health_management/HealthManagementPage.dart';
+import 'sections/brain_waves/BrainWavesPage.dart';
 import 'sections/home/HomePage.dart';
 import 'sections/meditation/MeditationPage.dart';
 import 'sections/profile/ProfilePage.dart';
@@ -66,8 +66,8 @@ class _MainTabPageState extends State<MainTabPage> {
 
   final List<Widget> _pages = const [
     HomePage(),
+    BrainWavesPage(),
     MeditationPage(),
-    HealthManagementPage(),
     ProfilePage(),
   ];
 
@@ -143,14 +143,14 @@ class _MainTabPageState extends State<MainTabPage> {
                 label: 'Trang chủ',
               ),
               BottomNavigationBarItem(
+                icon: Icon(Icons.waves_outlined),
+                activeIcon: Icon(Icons.waves),
+                label: 'Sóng não',
+              ),
+              BottomNavigationBarItem(
                 icon: Icon(Icons.self_improvement_outlined),
                 activeIcon: Icon(Icons.self_improvement),
                 label: 'Bài tập thiền',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.health_and_safety_outlined),
-                activeIcon: Icon(Icons.health_and_safety),
-                label: 'Quản lý sức khỏe',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.person_outline),
