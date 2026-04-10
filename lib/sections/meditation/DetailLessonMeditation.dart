@@ -1,10 +1,39 @@
 import 'package:flutter/material.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import 'StartMeditation.dart';
 import '../../core/theme/app_colors.dart';
 import '../health_management/HealthTabMenu.dart';
 
-class DetailLessonMeditationPage extends StatelessWidget {
+/// Maps lesson titles → YouTube video IDs (meditation / mindfulness videos).
+const Map<String, String> _lessonVideoIds = {
+  'Nền tảng hơi thở': 'inpok4MKVLM', // 5-min breathing meditation
+  'Thả lỏng cơ thể': 'MIr3RsUWrdo', // body relaxation guided
+  'Nhận Diện Suy Nghĩ': '4pLUleLdwY4', // mindfulness of thoughts
+  'Cảm Giác Cơ Thể': '15q-N-_kkrU', // body scan meditation
+  'Xử Lý Cảm Xúc Tiêu Cực': 'SEfs5TJZ6Nk', // emotional healing
+  'Thiền Từ Bi (Metta)': '-d_AA9H4z9U', // loving-kindness meditation
+  'Thiền Chấp Nhận': 'ZToicYcHIOU', // acceptance meditation
+  'Thiền Lưu Thông': '2K4z_IxsaHE', // flow meditation
+  'Thiền Khai Mở': 'O-6f5wQXSu8', // open awareness
+  'Thiền Giác Ngộ': 'wirV265ZYSw', // awakening meditation
+};
+
+const String _defaultVideoId = 'inpok4MKVLM';
+
+/// Also handle recommendation titles from BrainWavesPage that don't match
+/// the standard lesson titles above.
+const Map<String, String> _extraVideoIds = {
+  'Thiền Hít Thở Sâu & Thư Giãn': 'inpok4MKVLM',
+  'Thiền Buổi Sáng': '1ZYbU82GVz4',
+  'Thiền Cân Bằng Cảm Xúc': 'SEfs5TJZ6Nk',
+  'Ổn Định Tâm Trí (Tập trung)': '4pLUleLdwY4',
+  'Thiền Giảm Căng Thẳng': 'MIr3RsUWrdo',
+  'Thiền Quét Toàn Thân (Body Scan)': '15q-N-_kkrU',
+  'Thiền Đi Bộ Nhẹ Nhàng': '2K4z_IxsaHE',
+};
+
+class DetailLessonMeditationPage extends StatefulWidget {
   const DetailLessonMeditationPage({
     super.key,
     required this.lessonNumber,
@@ -15,6 +44,39 @@ class DetailLessonMeditationPage extends StatelessWidget {
   final int lessonNumber;
   final String lessonTitle;
   final bool isResume;
+
+  @override
+  State<DetailLessonMeditationPage> createState() =>
+      _DetailLessonMeditationPageState();
+}
+
+class _DetailLessonMeditationPageState
+    extends State<DetailLessonMeditationPage> {
+  late final YoutubePlayerController _ytCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final videoId =
+        _lessonVideoIds[widget.lessonTitle] ??
+        _extraVideoIds[widget.lessonTitle] ??
+        _defaultVideoId;
+    _ytCtrl = YoutubePlayerController.fromVideoId(
+      videoId: videoId,
+      autoPlay: false,
+      params: const YoutubePlayerParams(
+        showControls: true,
+        showFullscreenButton: true,
+        mute: false,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ytCtrl.close();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +110,7 @@ class DetailLessonMeditationPage extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Bài $lessonNumber: $lessonTitle',
+                      'Bài ${widget.lessonNumber}: ${widget.lessonTitle}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
@@ -83,7 +145,7 @@ class DetailLessonMeditationPage extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    Expanded(child: _buildMediaPlaceholder()),
+                    Expanded(child: _buildVideoPlayer()),
                     const SizedBox(height: 10),
                     SizedBox(
                       width: double.infinity,
@@ -101,7 +163,7 @@ class DetailLessonMeditationPage extends StatelessWidget {
                           ),
                         ),
                         child: Text(
-                          isResume ? 'Tiếp tục Thiền' : 'Bắt đầu Thiền',
+                          widget.isResume ? 'Tiếp tục Thiền' : 'Bắt đầu Thiền',
                           style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
@@ -210,28 +272,10 @@ class DetailLessonMeditationPage extends StatelessWidget {
     );
   }
 
-  Widget _buildMediaPlaceholder() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: const Color(0xFF9A9A9A),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Center(
-        child: Container(
-          width: 62,
-          height: 62,
-          decoration: const BoxDecoration(
-            color: Color(0x66000000),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(
-            Icons.play_arrow_rounded,
-            color: AppColors.white,
-            size: 36,
-          ),
-        ),
-      ),
+  Widget _buildVideoPlayer() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: YoutubePlayer(controller: _ytCtrl),
     );
   }
 }

@@ -99,7 +99,9 @@ class _MainTabPageState extends State<MainTabPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(child: _pages[_selectedIndex]),
+      body: SafeArea(
+        child: IndexedStack(index: _selectedIndex, children: _pages),
+      ),
       bottomNavigationBar: Container(
         margin: const EdgeInsets.fromLTRB(6, 0, 6, 10),
         decoration: BoxDecoration(
