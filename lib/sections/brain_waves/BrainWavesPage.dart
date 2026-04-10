@@ -1233,12 +1233,207 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         const SizedBox(height: 16),
         // ── Recommended exercises ──
         _buildRecommendedExercises(),
+        const SizedBox(height: 16),
+        // ── Theory basis button ──
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _showTheorySheet,
+            icon: const Icon(Icons.menu_book_outlined, size: 18),
+            label: const Text('Chi tiết cơ sở lý thuyết đánh giá'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF546E7A),
+              side: const BorderSide(color: Color(0xFFCFD8DC)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
         const SizedBox(height: 20),
       ],
     );
   }
 
   // ── Shared widgets ───────────────────────────────────────────────────────
+
+  void _showTheorySheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.85,
+        maxChildSize: 0.95,
+        minChildSize: 0.4,
+        builder: (ctx, scrollCtrl) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD0D0D0),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.menu_book_outlined,
+                      color: Color(0xFF37474F),
+                      size: 22,
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      'Cơ sở lý thuyết đánh giá',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF263238),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+              Expanded(
+                child: ListView(
+                  controller: scrollCtrl,
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
+                  children: const [
+                    _TheorySection(
+                      icon: Icons.waves,
+                      title: 'Sóng não là gì?',
+                      color: Color(0xFF129EAF),
+                      body:
+                          'Sóng não (brainwaves) là các tín hiệu điện sinh học '
+                          'được tạo ra bởi hoạt động đồng bộ của hàng tỷ tế bào '
+                          'thần kinh trong não. Chúng được đo bằng phương pháp '
+                          'điện não đồ (EEG — Electroencephalography) thông qua '
+                          'các điện cực đặt trên da đầu.',
+                    ),
+                    SizedBox(height: 16),
+                    _TheorySection(
+                      icon: Icons.show_chart,
+                      title: 'Sóng Alpha (8–13 Hz)',
+                      color: Color(0xFF149A33),
+                      body:
+                          'Sóng Alpha xuất hiện khi bạn thư giãn, nhắm mắt, '
+                          'hoặc trong trạng thái tĩnh tâm nhẹ. Biên độ Alpha cao '
+                          'cho thấy não bộ đang ở trạng thái nghỉ ngơi tỉnh táo, '
+                          'là nền tảng tốt cho thiền định và sáng tạo.\n\n'
+                          '• Biên độ bình thường: 30–80 µV\n'
+                          '• Alpha cao → thư giãn, bình tĩnh\n'
+                          '• Alpha thấp → có thể căng thẳng hoặc đang tập trung mạnh',
+                    ),
+                    SizedBox(height: 16),
+                    _TheorySection(
+                      icon: Icons.trending_up,
+                      title: 'Sóng Beta (13–30 Hz)',
+                      color: Color(0xFF009CC4),
+                      body:
+                          'Sóng Beta liên quan đến trạng thái tỉnh táo, tập trung '
+                          'và xử lý thông tin. Tuy nhiên, Beta quá cao có thể '
+                          'chỉ ra căng thẳng, lo lắng hoặc suy nghĩ quá mức.\n\n'
+                          '• Biên độ bình thường: 15–40 µV\n'
+                          '• Beta vừa phải → tập trung hiệu quả\n'
+                          '• Beta cao liên tục → căng thẳng, lo âu\n'
+                          '• Tỷ lệ Beta/Alpha cao → stress indicator',
+                    ),
+                    SizedBox(height: 16),
+                    _TheorySection(
+                      icon: Icons.nightlight_round,
+                      title: 'Sóng Delta (0.5–4 Hz)',
+                      color: Color(0xFFE8575A),
+                      body:
+                          'Sóng Delta chủ yếu xuất hiện trong giấc ngủ sâu '
+                          '(NREM stage 3-4). Khi tỉnh, Delta thấp là bình '
+                          'thường. Delta cao khi tỉnh có thể chỉ ra mệt mỏi '
+                          'hoặc thiếu ngủ.\n\n'
+                          '• Biên độ bình thường khi tỉnh: 5–20 µV\n'
+                          '• Delta thấp khi tỉnh → tỉnh táo tốt\n'
+                          '• Delta cao khi tỉnh → mệt mỏi, thiếu ngủ',
+                    ),
+                    SizedBox(height: 16),
+                    _TheorySection(
+                      icon: Icons.calculate_outlined,
+                      title: 'Cách tính điểm (1–10)',
+                      color: Color(0xFF7C4DFF),
+                      body:
+                          'Điểm tổng hợp được tính từ hai nguồn:\n\n'
+                          '① Sóng não EEG (trọng số 60%)\n'
+                          '   • Tỷ lệ Alpha cao → điểm cao (thư giãn)\n'
+                          '   • Tỷ lệ Beta cao → điểm thấp (căng thẳng)\n'
+                          '   • Công thức: αRatio × 0.55 + βRatio × 0.35 + 0.1\n\n'
+                          '② Khảo sát tâm lý 10 câu (trọng số 40%)\n'
+                          '   • 10 câu hỏi đánh giá: giấc ngủ, mức độ căng '
+                          'thẳng, khả năng tập trung, phương pháp giải toả, '
+                          'mệt mỏi, lo lắng, thời gian cá nhân, căng cứng cơ '
+                          'thể, kiểm soát cảm xúc, kinh nghiệm thiền\n'
+                          '   • Mỗi câu 5 mức (0-4): 0 = căng thẳng nhất, '
+                          '4 = thư giãn nhất\n\n'
+                          'Điểm cuối = EEG × 0.6 + Khảo sát × 0.4',
+                    ),
+                    SizedBox(height: 16),
+                    _TheorySection(
+                      icon: Icons.assessment_outlined,
+                      title: 'Thang đánh giá',
+                      color: Color(0xFFF8AC14),
+                      body:
+                          '• 7.5–10.0  →  Thư giãn: Sóng Alpha chiếm ưu thế, '
+                          'tâm trí bình tĩnh, phù hợp thiền định sâu.\n\n'
+                          '• 6.0–7.4  →  Căng thẳng nhẹ: Beta tăng nhẹ, vẫn '
+                          'trong ngưỡng bình thường. Nên tập thở hoặc thiền '
+                          'ngắn.\n\n'
+                          '• 4.0–5.9  →  Căng thẳng trung bình: Beta cao liên '
+                          'tục, Alpha bị ức chế. Cần nghỉ ngơi và thực hành '
+                          'thiền định.\n\n'
+                          '• 1.0–3.9  →  Căng thẳng cao: Beta rất cao, Alpha '
+                          'gần như bị triệt tiêu. Khuyến nghị dành thời gian '
+                          'thư giãn và có thể tham khảo chuyên gia.',
+                    ),
+                    SizedBox(height: 16),
+                    _TheorySection(
+                      icon: Icons.science_outlined,
+                      title: 'Tài liệu tham khảo',
+                      color: Color(0xFF78909C),
+                      body:
+                          '1. Niedermeyer E., da Silva F.L. – '
+                          '"Electroencephalography: Basic Principles, '
+                          'Clinical Applications, and Related Fields" (2004)\n\n'
+                          '2. Barry R.J. et al. – "EEG differences between '
+                          'eyes-closed and eyes-open resting conditions" '
+                          '(Clinical Neurophysiology, 2007)\n\n'
+                          '3. Lomas T. et al. – "A systematic review of the '
+                          'neurophysiology of mindfulness on EEG oscillations" '
+                          '(Neuroscience & Biobehavioral Reviews, 2015)\n\n'
+                          '4. Tiến sĩ Andrew Weil – Kỹ thuật thở 4-7-8 '
+                          '(University of Arizona Center for Integrative '
+                          'Medicine)',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _scoreBreakdownRow(
     String label,
@@ -2751,4 +2946,62 @@ class _WaveChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _WaveChartPainter old) => true;
+}
+
+// ── Theory Bottom-Sheet helper ──────────────────────────────────────────────
+
+class _TheorySection extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Color color;
+  final String body;
+
+  const _TheorySection({
+    required this.icon,
+    required this.title,
+    required this.color,
+    required this.body,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            body,
+            style: const TextStyle(
+              fontSize: 13.5,
+              height: 1.55,
+              color: Color(0xFF37474F),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
