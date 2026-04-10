@@ -19,9 +19,7 @@ class BleService {
 
   static final BleService instance = BleService._();
 
-  static final Guid serviceUuid = Guid(
-    '4fafc201-1fb5-459e-8fcc-c5c9c331914b',
-  );
+  static final Guid serviceUuid = Guid('4fafc201-1fb5-459e-8fcc-c5c9c331914b');
   static final Guid characteristicUuid = Guid(
     'beb5483e-36e1-4688-b7f5-ea07361b26a8',
   );
@@ -72,7 +70,8 @@ class BleService {
 
     _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
       final Map<String, BleDeviceInfo> devices = <String, BleDeviceInfo>{
-        for (final BleDeviceInfo item in scanResultsNotifier.value) item.id: item,
+        for (final BleDeviceInfo item in scanResultsNotifier.value)
+          item.id: item,
       };
 
       for (final result in results) {
@@ -80,7 +79,10 @@ class BleService {
           continue;
         }
 
-        final name = _displayName(result.device.platformName, result.advertisementData.advName);
+        final name = _displayName(
+          result.device.platformName,
+          result.advertisementData.advName,
+        );
         devices[result.device.remoteId.str] = BleDeviceInfo(
           id: result.device.remoteId.str,
           name: name,
@@ -183,7 +185,8 @@ class BleService {
     final advertisedName = result.advertisementData.advName;
     final platformName = result.device.platformName;
     final serviceMatch = result.advertisementData.serviceUuids.any(
-      (uuid) => uuid.toString().toLowerCase() == serviceUuid.str128.toLowerCase(),
+      (uuid) =>
+          uuid.toString().toLowerCase() == serviceUuid.str128.toLowerCase(),
     );
 
     return advertisedName == targetName ||
