@@ -6,6 +6,10 @@
 .DS_Store
 .atom/
 .build/
+.agents
+.codex
+AGENTS.md
+.github
 .buildlog/
 .history
 .svn/

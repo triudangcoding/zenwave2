@@ -6,13 +6,19 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../screens/assessment/AssessmentHubScreen.dart';
 import '../../screens/Breathing/BreathingListScreen.dart';
+import '../../services/app_state_service.dart';
 import '../brain_overview/BrainOverviewPage.dart';
 import '../meditation_space/MeditationSpacePage.dart';
 import 'StartMeditation2.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
   void _openBrainOverview(BuildContext context) {
     Navigator.of(
       context,
@@ -42,10 +48,42 @@ class HomePage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildRecommendedCard(context),
+                    // Recommendation card is reactive to EEG scores
+                    ValueListenableBuilder<int?>(
+                      valueListenable: AppStateService.stressScoreNotifier,
+                      builder: (_, __, ___) => ValueListenableBuilder<int?>(
+                        valueListenable:
+                            AppStateService.relaxationScoreNotifier,
+                        builder: (_, __, ___) =>
+                            _buildRecommendedCard(context),
+                      ),
+                    ),
                     const SizedBox(height: 10),
                     _buildStatsCard(),
                     const SizedBox(height: 12),
+                    // EEG scores section (replaces the old "daily" section)
+                    ValueListenableBuilder<bool>(
+                      valueListenable: AppStateService.deviceConnectedNotifier,
+                      builder: (_, __, ___) =>
+                          ValueListenableBuilder<int?>(
+                            valueListenable:
+                                AppStateService.stressScoreNotifier,
+                            builder: (_, __, ___) =>
+                                ValueListenableBuilder<int?>(
+                                  valueListenable:
+                                      AppStateService.relaxationScoreNotifier,
+                                  builder: (_, __, ___) =>
+                                      _buildEegSection(context),
+                                ),
+                          ),
+                    ),
+                    const SizedBox(height: 14),
+                    // Stress scale section
+                    ValueListenableBuilder<int?>(
+                      valueListenable: AppStateService.stressScoreNotifier,
+                      builder: (_, __, ___) => _buildStressScaleSection(),
+                    ),
+                    const SizedBox(height: 14),
                     const Text(
                       'Tổng quan',
                       style: TextStyle(
@@ -105,8 +143,6 @@ class HomePage extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    _buildDailySection(),
                     const SizedBox(height: 14),
                     _buildQuickActionsSection(),
                   ],
@@ -209,10 +245,28 @@ class HomePage extends StatelessWidget {
   }
 
   Widget _buildRecommendedCard(BuildContext context) {
+    final rec = AppStateService.currentRecommendation;
+    final int? stress = AppStateService.stressScore;
+
+    // Card accent colour changes based on recommendation
+    final Color cardBg;
+    final IconData recIcon;
+    if (stress != null && stress >= 7) {
+      cardBg = const Color(0xFFFFE8CC);
+      recIcon = Icons.air;
+    } else if (AppStateService.relaxationScore != null &&
+        AppStateService.relaxationScore! <= 3) {
+      cardBg = const Color(0xFFD6EFF9);
+      recIcon = Icons.music_note_outlined;
+    } else {
+      cardBg = AppColors.homeRecommendedCard;
+      recIcon = Icons.self_improvement_outlined;
+    }
+
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 12, 0),
       decoration: BoxDecoration(
-        color: AppColors.homeRecommendedCard,
+        color: cardBg,
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
           BoxShadow(
@@ -228,35 +282,47 @@ class HomePage extends StatelessWidget {
           Expanded(
             flex: 7,
             child: Padding(
-              padding: EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.only(bottom: 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      Icon(recIcon, size: 16, color: AppColors.neutral700),
+                      const SizedBox(width: 5),
+                      const Text(
+                        'Gợi ý hôm nay',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: AppColors.neutral700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
                   Text(
-                    'Hãy giữ nhịp hôm nay',
-                    maxLines: 1,
+                    rec.headline,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    softWrap: false,
-                    style: TextStyle(
-                      fontSize: 18,
+                    style: const TextStyle(
+                      fontSize: 17,
                       fontWeight: FontWeight.w700,
                       color: AppColors.neutral900,
+                      height: 1.25,
                     ),
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Text(
-                    'Bài tập được đề xuất:',
-                    style: TextStyle(fontSize: 13, color: AppColors.neutral900),
-                  ),
-                  Text(
-                    'Thiền thở (10 phút)',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.neutral900,
+                    rec.description,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.45,
+                      color: AppColors.neutral700,
                     ),
                   ),
-                  SizedBox(height: 10),
+                  const SizedBox(height: 10),
                   SizedBox(
                     height: 34,
                     child: FilledButton(
@@ -274,17 +340,17 @@ class HomePage extends StatelessWidget {
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 14),
                       ),
-                      child: const Text(
-                        'Bắt đầu thiền ngay',
-                        style: TextStyle(
-                          fontSize: 14,
+                      child: Text(
+                        rec.actionLabel,
+                        style: const TextStyle(
+                          fontSize: 13.5,
                           fontWeight: FontWeight.w700,
                           color: AppColors.white,
                         ),
                       ),
                     ),
                   ),
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
                 ],
               ),
             ),
@@ -352,12 +418,16 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildDailySection() {
+  Widget _buildEegSection(BuildContext context) {
+    final int? stress = AppStateService.stressScore;
+    final int? relax = AppStateService.relaxationScore;
+    final bool connected = AppStateService.isDeviceConnected;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Hằng ngày',
+          'Chỉ số sóng não',
           style: TextStyle(
             fontSize: 19,
             fontWeight: FontWeight.w700,
@@ -365,9 +435,226 @@ class HomePage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
+        if (stress == null || relax == null)
+          // ── No data state ──────────────────────────────────────────────
+          GestureDetector(
+            onTap: () => _openConnectDeviceSheet(context),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+              decoration: BoxDecoration(
+                color: AppColors.homeSectionCardBackground,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.homeSectionCardBorder),
+                boxShadow: const [
+                  BoxShadow(
+                    color: AppColors.homeCardShadow,
+                    blurRadius: 6,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: connected
+                          ? AppColors.teal100
+                          : AppColors.neutral100,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      connected
+                          ? Icons.sensors
+                          : Icons.bluetooth_searching,
+                      color: connected
+                          ? AppColors.cyan600
+                          : AppColors.neutral500,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          connected
+                              ? 'Đang chờ dữ liệu EEG...'
+                              : 'Chưa kết nối thiết bị',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.neutral900,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          connected
+                              ? 'Nhận dữ liệu từ headband để xem chỉ số.'
+                              : 'Nhấn để kết nối headband và bắt đầu đo.',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: AppColors.neutral600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right,
+                    color: AppColors.neutral500,
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          // ── Has data state ─────────────────────────────────────────────
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.homeSectionCardBackground,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.homeSectionCardBorder),
+              boxShadow: const [
+                BoxShadow(
+                  color: AppColors.homeCardShadow,
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: AppColors.green500,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Dữ liệu thời gian thực',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: AppColors.neutral600,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ScoreGauge(
+                        label: 'Căng thẳng',
+                        score: stress,
+                        highIsBad: true,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _ScoreGauge(
+                        label: 'Thư giãn',
+                        score: relax,
+                        highIsBad: false,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _eegInterpretation(stress, relax),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.neutral700,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _eegInterpretation(int stress, int relax) {
+    if (stress >= 7) {
+      return 'Mức căng thẳng đang cao ($stress/10). Hãy thử bài tập hít thở để hạ nhiệt.';
+    } else if (relax <= 3) {
+      return 'Mức thư giãn còn thấp ($relax/10). Nghe nhạc nhẹ hoặc thiền có thể giúp bạn.';
+    } else if (stress <= 3 && relax >= 7) {
+      return 'Tuyệt vời! Tâm trí bạn đang rất cân bằng. Tiếp tục duy trì nhé.';
+    }
+    return 'Chỉ số tương đối ổn định. Một bài thiền ngắn sẽ giúp bạn củng cố thêm.';
+  }
+
+  // ── Stress scale 1-10 section ─────────────────────────────────────────────
+
+  Widget _buildStressScaleSection() {
+    final int? stress = AppStateService.stressScore;
+
+    // Zone definitions: label, range, color
+    const List<_StressZone> zones = [
+      _StressZone(label: 'Bình tĩnh', range: '1–2', from: 1, to: 2,
+          color: Color(0xFF22C55E)),
+      _StressZone(label: 'Bình thường', range: '3–4', from: 3, to: 4,
+          color: Color(0xFF86EFAC)),
+      _StressZone(label: 'Nhẹ', range: '5–6', from: 5, to: 6,
+          color: Color(0xFFFACC15)),
+      _StressZone(label: 'Vừa', range: '7–8', from: 7, to: 8,
+          color: Color(0xFFF97316)),
+      _StressZone(label: 'Cao', range: '9–10', from: 9, to: 10,
+          color: Color(0xFFEF4444)),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              'Mức độ căng thẳng',
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
+                color: AppColors.neutral900,
+              ),
+            ),
+            const Spacer(),
+            if (stress != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _stressColor(stress).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: _stressColor(stress).withValues(alpha: 0.4)),
+                ),
+                child: Text(
+                  '$stress / 10',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: _stressColor(stress),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: AppColors.homeSectionCardBackground,
             borderRadius: BorderRadius.circular(14),
@@ -382,38 +669,191 @@ class HomePage extends StatelessWidget {
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text(
-                'Chưa có dữ liệu sóng não',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.homeDailyHeadline,
-                ),
+            children: [
+              // ── Gradient bar with pointer ──────────────────────────────
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final double barWidth = constraints.maxWidth;
+                  final double thumbX = stress != null
+                      ? ((stress - 1) / 9) * barWidth
+                      : -1;
+
+                  return Column(
+                    children: [
+                      if (stress != null)
+                        Padding(
+                          padding: EdgeInsets.only(
+                            left: (thumbX - 18).clamp(0, barWidth - 36),
+                          ),
+                          child: Container(
+                            width: 36,
+                            height: 24,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: _stressColor(stress),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '$stress',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (stress != null) const SizedBox(height: 4),
+                      // Gradient bar
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          height: 18,
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Color(0xFF22C55E),
+                                Color(0xFF86EFAC),
+                                Color(0xFFFACC15),
+                                Color(0xFFF97316),
+                                Color(0xFFEF4444),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Tick marks: 1 … 10
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: List<Widget>.generate(10, (i) {
+                            final int val = i + 1;
+                            final bool active = stress == val;
+                            return Text(
+                              '$val',
+                              style: TextStyle(
+                                fontSize: active ? 13 : 11,
+                                fontWeight: active
+                                    ? FontWeight.w800
+                                    : FontWeight.w400,
+                                color: active
+                                    ? _stressColor(stress!)
+                                    : AppColors.neutral500,
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
-              SizedBox(height: 8),
-              Text(
-                'Hãy kết nối thiết bị để bắt đầu theo dõi chỉ số tập trung và thư giãn.',
-                style: TextStyle(
-                  fontSize: 16,
-                  height: 1.35,
-                  color: AppColors.homeDailyBody,
-                ),
+              const SizedBox(height: 16),
+              // ── Zone chips ─────────────────────────────────────────────
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: zones.map((zone) {
+                  final bool active = stress != null &&
+                      stress >= zone.from && stress <= zone.to;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: active
+                          ? zone.color.withValues(alpha: 0.18)
+                          : AppColors.neutral100,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: active
+                            ? zone.color
+                            : AppColors.neutral200,
+                        width: active ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: active ? zone.color : AppColors.neutral300,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${zone.label} (${zone.range})',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: active
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                            color: active
+                                ? zone.color
+                                : AppColors.neutral600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
               ),
-              SizedBox(height: 10),
-              Text(
-                'Xem hướng dẫn kết nối thiết bị ->',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.homeDailyLink,
+              // ── Advice text when there is a score ──────────────────────
+              if (stress != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _stressColor(stress).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    _stressAdvice(stress),
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color: _stressColor(stress),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
-              ),
+              ] else ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'Kết nối headband để đo mức độ căng thẳng của bạn.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.neutral500,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
       ],
     );
+  }
+
+  static Color _stressColor(int score) {
+    if (score <= 2) return const Color(0xFF22C55E);
+    if (score <= 4) return const Color(0xFF65A30D);
+    if (score <= 6) return const Color(0xFFCA8A04);
+    if (score <= 8) return const Color(0xFFF97316);
+    return const Color(0xFFEF4444);
+  }
+
+  static String _stressAdvice(int score) {
+    if (score <= 2) return '✦ Bạn đang rất bình tĩnh. Duy trì trạng thái này thật tuyệt vời!';
+    if (score <= 4) return '✦ Mức căng thẳng ở ngưỡng bình thường. Bạn đang kiểm soát tốt.';
+    if (score <= 6) return '✦ Căng thẳng ở mức nhẹ. Thử một bài thiền ngắn để giữ cân bằng.';
+    if (score <= 8) return '✦ Mức căng thẳng khá cao. Hãy thực hành hít thở 4-7-8 ngay bây giờ.';
+    return '✦ Căng thẳng ở mức cao nhất. Dừng lại, hít thở sâu và thư giãn hoàn toàn.';
   }
 
   Widget _buildQuickActionsSection() {
@@ -480,6 +920,7 @@ class _ConnectDeviceSideSheetState extends State<_ConnectDeviceSideSheet> {
   bool _isScanning = true;
   bool _isConnecting = false;
   bool _isConnected = false;
+  bool _isReceivingData = false;
   String _selectedDevice = 'ZenWave NeuroBand X2';
   double _batteryLevel = 0.78;
   Timer? _scanTimer;
@@ -493,6 +934,7 @@ class _ConnectDeviceSideSheetState extends State<_ConnectDeviceSideSheet> {
   @override
   void initState() {
     super.initState();
+    _isConnected = AppStateService.isDeviceConnected;
     _scanTimer = Timer(const Duration(seconds: 2), () {
       if (!mounted) {
         return;
@@ -525,6 +967,24 @@ class _ConnectDeviceSideSheetState extends State<_ConnectDeviceSideSheet> {
       _isConnected = true;
       _batteryLevel = 0.82;
     });
+    AppStateService.deviceConnectedNotifier.value = true;
+    AppStateService.resetScores();
+  }
+
+  /// Simulates receiving an EEG measurement from the headband.
+  Future<void> _receiveEegData() async {
+    setState(() => _isReceivingData = true);
+    await Future<void>.delayed(const Duration(milliseconds: 2200));
+    if (!mounted) return;
+
+    // Generate demo scores — vary each call for a realistic feel
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final stress = 4 + (now % 5).toInt(); // 4-8
+    final relax = 10 - stress + 1;        // inverse trend ~2-7
+
+    AppStateService.updateScores(stress: stress, relaxation: relax);
+    setState(() => _isReceivingData = false);
+    if (mounted) Navigator.pop(context);
   }
 
   @override
@@ -717,9 +1177,16 @@ class _ConnectDeviceSideSheetState extends State<_ConnectDeviceSideSheet> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _isConnecting ? null : _connectToDevice,
+                  onPressed: _isConnecting || _isConnected
+                      ? null
+                      : _connectToDevice,
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.cyan500,
+                    backgroundColor: _isConnected
+                        ? AppColors.green600
+                        : AppColors.cyan500,
+                    disabledBackgroundColor: _isConnected
+                        ? AppColors.green600
+                        : AppColors.neutral300,
                     minimumSize: const Size.fromHeight(50),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -736,9 +1203,79 @@ class _ConnectDeviceSideSheetState extends State<_ConnectDeviceSideSheet> {
                             ),
                           ),
                         )
-                      : Text(_isConnected ? 'Đã kết nối' : 'Kết nối thiết bị'),
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _isConnected
+                                  ? Icons.check_circle_outline
+                                  : Icons.bluetooth,
+                              size: 18,
+                              color: AppColors.white,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _isConnected
+                                  ? 'Đã kết nối thành công'
+                                  : 'Kết nối thiết bị',
+                              style: const TextStyle(color: AppColors.white),
+                            ),
+                          ],
+                        ),
                 ),
               ),
+              if (_isConnected) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _isReceivingData ? null : _receiveEegData,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.teal700,
+                      minimumSize: const Size.fromHeight(50),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _isReceivingData
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    AppColors.white,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                'Đang đo sóng não...',
+                                style: TextStyle(color: AppColors.white),
+                              ),
+                            ],
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: const [
+                              Icon(
+                                Icons.graphic_eq,
+                                size: 18,
+                                color: AppColors.white,
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'Nhận dữ liệu EEG',
+                                style: TextStyle(color: AppColors.white),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -938,6 +1475,139 @@ class _QuickActionTile extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 height: 1.2,
                 color: AppColors.neutral900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Stress zone data class ────────────────────────────────────────────────
+
+class _StressZone {
+  final String label;
+  final String range;
+  final int from;
+  final int to;
+  final Color color;
+  const _StressZone({
+    required this.label,
+    required this.range,
+    required this.from,
+    required this.to,
+    required this.color,
+  });
+}
+
+// ── Score gauge widget ────────────────────────────────────────────────────
+
+class _ScoreGauge extends StatelessWidget {
+  const _ScoreGauge({
+    required this.label,
+    required this.score,
+    required this.highIsBad,
+  });
+
+  final String label;
+  final int score;
+  final bool highIsBad;
+
+  Color get _barColor {
+    final double pct = score / 10;
+    if (highIsBad) {
+      if (pct >= 0.7) return AppColors.red500;
+      if (pct >= 0.4) return AppColors.orange500;
+      return AppColors.green500;
+    } else {
+      if (pct >= 0.7) return AppColors.green500;
+      if (pct >= 0.4) return AppColors.orange400;
+      return AppColors.red400;
+    }
+  }
+
+  String get _statusLabel {
+    final double pct = score / 10;
+    if (highIsBad) {
+      if (pct >= 0.7) return 'Cao';
+      if (pct >= 0.4) return 'Trung bình';
+      return 'Thấp';
+    } else {
+      if (pct >= 0.7) return 'Tốt';
+      if (pct >= 0.4) return 'Trung bình';
+      return 'Thấp';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: _barColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _barColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12.5,
+              color: AppColors.neutral600,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '$score',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: _barColor,
+                  height: 1,
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 3, left: 2),
+                child: Text(
+                  '/10',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.neutral500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: score / 10,
+              minHeight: 6,
+              backgroundColor: AppColors.neutral100,
+              valueColor: AlwaysStoppedAnimation<Color>(_barColor),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: _barColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              _statusLabel,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: _barColor,
               ),
             ),
           ),

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:vibration/vibration.dart';
 
 import '../../models/breathing_exercise.dart';
+import '../../services/app_state_service.dart';
 
 enum BreathingPhase { inhale, hold, exhale, wait }
 
@@ -305,24 +306,81 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
   }
 
   void _showCompletionDialog() {
+    // Reduce stress score by 2 pts (min 1) to reflect breathing exercise benefit
+    final int? currentStress = AppStateService.stressScore;
+    final int? currentRelax = AppStateService.relaxationScore;
+    if (currentStress != null && currentRelax != null) {
+      final int newStress = (currentStress - 2).clamp(1, 10);
+      final int newRelax = (currentRelax + 1).clamp(1, 10);
+      AppStateService.updateScores(stress: newStress, relaxation: newRelax);
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Hoàn thành'),
-        content: const Text(
-          'Bạn đã hoàn thành bài tập thở. Cảm ơn bạn đã tham gia!',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).pop();
-            },
-            child: const Text('Đóng'),
+      builder: (context) {
+        final int? stress = AppStateService.stressScore;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Text('🎉 ', style: TextStyle(fontSize: 22)),
+              Text('Hoàn thành!',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+            ],
           ),
-        ],
-      ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Bạn đã hoàn thành bài tập thở. Tuyệt vời!',
+                style: TextStyle(fontSize: 14),
+              ),
+              if (stress != null) ...[  
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF22C55E).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: const Color(0xFF22C55E).withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.trending_down,
+                          color: Color(0xFF22C55E), size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Căng thẳng hiện tại: $stress/10',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF22C55E),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pop();
+              },
+              child: const Text('Xem kết quả',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
+        );
+      },
     );
   }
 

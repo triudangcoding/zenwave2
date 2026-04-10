@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 
 import 'core/navigation/tab_navigation_controller.dart';
 import 'core/theme/app_colors.dart';
+import 'screens/onboarding/WelcomeOnboardingScreen.dart';
 import 'sections/health_management/HealthManagementPage.dart';
 import 'sections/home/HomePage.dart';
 import 'sections/meditation/MeditationPage.dart';
 import 'sections/profile/ProfilePage.dart';
+import 'services/app_state_service.dart';
 
 void main() {
   runApp(const MyApp());
@@ -23,7 +25,26 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: AppColors.white,
         colorScheme: ColorScheme.fromSeed(seedColor: AppColors.teal500),
       ),
-      home: const MainTabPage(),
+      home: const _AppRoot(),
+    );
+  }
+}
+
+/// Listens to [AppStateService.isOnboardedNotifier] and switches between
+/// the onboarding flow and the main tab shell.
+class _AppRoot extends StatelessWidget {
+  const _AppRoot();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppStateService.isOnboardedNotifier,
+      builder: (BuildContext ctx, bool onboarded, _) {
+        if (!onboarded) {
+          return const WelcomeOnboardingScreen();
+        }
+        return const MainTabPage();
+      },
     );
   }
 }
