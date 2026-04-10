@@ -1256,6 +1256,68 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
           ),
         ),
         const SizedBox(height: 20),
+        // ── Re-measure CTA ──
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF129EAF), Color(0xFF0E7B8A)],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x30129EAF),
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            children: [
+              const Text(
+                'Đã thực hành bài tập?',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Đo lại để xem tình trạng có cải thiện không',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Color(0xCCFFFFFF),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: FilledButton.icon(
+                  onPressed: _reset,
+                  icon: const Icon(Icons.replay, size: 20),
+                  label: const Text(
+                    'Đo lại sóng não',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF129EAF),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 30),
       ],
     );
   }
