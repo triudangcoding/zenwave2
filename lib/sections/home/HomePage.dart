@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../screens/assessment/AssessmentHubScreen.dart';
@@ -10,8 +11,72 @@ import '../brain_overview/BrainOverviewPage.dart';
 import '../meditation_space/MeditationSpacePage.dart';
 import 'StartMeditation2.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  static const List<_MeditationVideo> _dailyMeditationVideos =
+      <_MeditationVideo>[
+        _MeditationVideo(
+          title: 'Thiền Buổi Sáng: Khởi Đầu Nhẹ Nhàng',
+          category: 'Bình tâm',
+          duration: '10 phút',
+          youtubeUrl: 'https://www.youtube.com/watch?v=inpok4MKVLM',
+          thumbnailUrl: 'https://img.youtube.com/vi/inpok4MKVLM/hqdefault.jpg',
+        ),
+        _MeditationVideo(
+          title: 'Thiền Ngủ Sâu: Thư Giãn Toàn Thân',
+          category: 'Giấc ngủ',
+          duration: '15 phút',
+          youtubeUrl: 'https://www.youtube.com/watch?v=ZToicYcHIOU',
+          thumbnailUrl: 'https://img.youtube.com/vi/ZToicYcHIOU/hqdefault.jpg',
+        ),
+        _MeditationVideo(
+          title: 'Thiền Giảm Căng Thẳng 5 Phút',
+          category: 'Giảm stress',
+          duration: '5 phút',
+          youtubeUrl: 'https://www.youtube.com/watch?v=aXItOY0sLRY',
+          thumbnailUrl: 'https://img.youtube.com/vi/aXItOY0sLRY/hqdefault.jpg',
+        ),
+      ];
+
+  late final PageController _dailyCarouselController;
+  Timer? _carouselTimer;
+  int _currentCarouselIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _dailyCarouselController = PageController(viewportFraction: 0.92);
+    _startCarouselAutoPlay();
+  }
+
+  @override
+  void dispose() {
+    _carouselTimer?.cancel();
+    _dailyCarouselController.dispose();
+    super.dispose();
+  }
+
+  void _startCarouselAutoPlay() {
+    _carouselTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted || !_dailyCarouselController.hasClients) {
+        return;
+      }
+
+      final int nextIndex =
+          (_currentCarouselIndex + 1) % _dailyMeditationVideos.length;
+      _dailyCarouselController.animateToPage(
+        nextIndex,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
 
   void _openBrainOverview(BuildContext context) {
     Navigator.of(
@@ -22,6 +87,12 @@ class HomePage extends StatelessWidget {
   void _openMeditationSpace(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const MeditationSpacePage()),
+    );
+  }
+
+  void _openMeditationVideo(BuildContext context, _MeditationVideo video) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => _YoutubePlayerPage(video: video)),
     );
   }
 
@@ -357,7 +428,7 @@ class HomePage extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Hằng ngày',
+          'Thiền mỗi ngày',
           style: TextStyle(
             fontSize: 19,
             fontWeight: FontWeight.w700,
@@ -365,51 +436,253 @@ class HomePage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-          decoration: BoxDecoration(
-            color: AppColors.homeSectionCardBackground,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.homeSectionCardBorder),
-            boxShadow: const [
-              BoxShadow(
-                color: AppColors.homeCardShadow,
-                blurRadius: 6,
-                offset: Offset(0, 2),
-              ),
-            ],
+        SizedBox(
+          height: 208,
+          child: PageView.builder(
+            controller: _dailyCarouselController,
+            itemCount: _dailyMeditationVideos.length,
+            onPageChanged: (int index) {
+              setState(() {
+                _currentCarouselIndex = index;
+              });
+            },
+            itemBuilder: (context, index) {
+              final video = _dailyMeditationVideos[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () => _openMeditationVideo(context, video),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: AppColors.homeCardShadow,
+                          blurRadius: 8,
+                          offset: Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.network(
+                            video.thumbnailUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: AppColors.teal100,
+                              child: const Icon(
+                                Icons.play_circle_outline,
+                                size: 54,
+                                color: AppColors.cyan700,
+                              ),
+                            ),
+                          ),
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.08),
+                                  Colors.black.withValues(alpha: 0.65),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.white.withValues(
+                                      alpha: 0.86,
+                                    ),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    video.category,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.neutral900,
+                                    ),
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  video.title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 7),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.play_circle_fill,
+                                      color: AppColors.white,
+                                      size: 17,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      video.duration,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text(
-                'Chưa có dữ liệu sóng não',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.homeDailyHeadline,
-                ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List<Widget>.generate(_dailyMeditationVideos.length, (
+            int index,
+          ) {
+            final bool active = _currentCarouselIndex == index;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: active ? 18 : 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: active ? AppColors.cyan500 : AppColors.neutral300,
+                borderRadius: BorderRadius.circular(30),
               ),
-              SizedBox(height: 8),
-              Text(
-                'Hãy kết nối thiết bị để bắt đầu theo dõi chỉ số tập trung và thư giãn.',
-                style: TextStyle(
-                  fontSize: 16,
-                  height: 1.35,
-                  color: AppColors.homeDailyBody,
+            );
+          }),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Danh sách bài thiền',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: AppColors.neutral900,
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 150,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _dailyMeditationVideos.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final video = _dailyMeditationVideos[index];
+              return SizedBox(
+                width: 284,
+                child: InkWell(
+                  onTap: () => _openMeditationVideo(context, video),
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.homeSectionCardBackground,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: AppColors.homeSectionCardBorder,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.network(
+                            video.thumbnailUrl,
+                            width: 120,
+                            height: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              width: 120,
+                              color: AppColors.teal100,
+                              child: const Icon(
+                                Icons.play_circle_outline,
+                                size: 34,
+                                color: AppColors.cyan700,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                video.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 14.4,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.neutral900,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '${video.category} • ${video.duration}',
+                                style: const TextStyle(
+                                  fontSize: 12.4,
+                                  color: AppColors.neutral700,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.cyan100,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Text(
+                                  'Xem video',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.cyan700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-              SizedBox(height: 10),
-              Text(
-                'Xem hướng dẫn kết nối thiết bị ->',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.homeDailyLink,
-                ),
-              ),
-            ],
+              );
+            },
           ),
         ),
       ],
@@ -741,6 +1014,126 @@ class _ConnectDeviceSideSheetState extends State<_ConnectDeviceSideSheet> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MeditationVideo {
+  const _MeditationVideo({
+    required this.title,
+    required this.category,
+    required this.duration,
+    required this.youtubeUrl,
+    required this.thumbnailUrl,
+  });
+
+  final String title;
+  final String category;
+  final String duration;
+  final String youtubeUrl;
+  final String thumbnailUrl;
+}
+
+class _YoutubePlayerPage extends StatefulWidget {
+  const _YoutubePlayerPage({required this.video});
+
+  final _MeditationVideo video;
+
+  @override
+  State<_YoutubePlayerPage> createState() => _YoutubePlayerPageState();
+}
+
+class _YoutubePlayerPageState extends State<_YoutubePlayerPage> {
+  YoutubePlayerController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    final String? videoId = YoutubePlayer.convertUrlToId(
+      widget.video.youtubeUrl,
+    );
+
+    if (videoId != null) {
+      _controller = YoutubePlayerController(
+        initialVideoId: videoId,
+        flags: const YoutubePlayerFlags(
+          autoPlay: true,
+          mute: false,
+          enableCaption: true,
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final YoutubePlayerController? controller = _controller;
+    return Scaffold(
+      backgroundColor: AppColors.white,
+      appBar: AppBar(
+        title: Text(widget.video.title),
+        backgroundColor: AppColors.white,
+        foregroundColor: AppColors.neutral900,
+        elevation: 0,
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: controller == null
+              ? const Center(
+                  child: Text(
+                    'Video không hợp lệ. Vui lòng kiểm tra lại URL YouTube.',
+                    style: TextStyle(fontSize: 14, color: AppColors.neutral700),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: YoutubePlayer(
+                        controller: controller,
+                        showVideoProgressIndicator: true,
+                        progressIndicatorColor: AppColors.cyan500,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      widget.video.category,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.cyan700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.video.title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Thời lượng: ${widget.video.duration}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: AppColors.neutral700,
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ),
     );
