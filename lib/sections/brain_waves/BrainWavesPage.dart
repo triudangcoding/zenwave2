@@ -457,14 +457,17 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
 
       // ── Generate data with session-unique profile ──
       final t = _alphaPoints.length.toDouble();
-      final alpha = _alphaBase +
+      final alpha =
+          _alphaBase +
           rng.nextDouble() * _alphaRange +
           sin(t * _sineFreqAlpha + _phaseShift) * (6 + rng.nextDouble() * 6);
-      final beta = _betaBase +
+      final beta =
+          _betaBase +
           rng.nextDouble() * _betaRange +
           sin(t * _sineFreqBeta + _phaseShift * 1.3) *
               (4 + rng.nextDouble() * 5);
-      final delta = _deltaBase +
+      final delta =
+          _deltaBase +
           rng.nextDouble() * _deltaRange +
           sin(t * _sineFreqDelta + _phaseShift * 0.7) *
               (3 + rng.nextDouble() * 4);
@@ -508,8 +511,10 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
 
     // Add small noise so repeated sessions never land on same number
     final rng = Random();
-    _overallScore = (_overallScore + (rng.nextDouble() - 0.5) * 1.2)
-        .clamp(3.5, 9.5);
+    _overallScore = (_overallScore + (rng.nextDouble() - 0.5) * 1.2).clamp(
+      3.5,
+      9.5,
+    );
     _overallScore = double.parse(_overallScore.toStringAsFixed(1));
 
     if (_overallScore >= 7.5) {
@@ -898,8 +903,11 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.signal_cellular_connected_no_internet_0_bar,
-                    size: 18, color: Color(0xFFEF6C00)),
+                const Icon(
+                  Icons.signal_cellular_connected_no_internet_0_bar,
+                  size: 18,
+                  color: Color(0xFFEF6C00),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -1083,11 +1091,41 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     final int stressInt = (11 - _overallScore).round().clamp(1, 10);
 
     const List<_StressZone> zones = [
-      _StressZone(label: 'Bình tĩnh', range: '1–2', from: 1, to: 2, color: Color(0xFF22C55E)),
-      _StressZone(label: 'Bình thường', range: '3–4', from: 3, to: 4, color: Color(0xFF86EFAC)),
-      _StressZone(label: 'Nhẹ', range: '5–6', from: 5, to: 6, color: Color(0xFFFACC15)),
-      _StressZone(label: 'Vừa', range: '7–8', from: 7, to: 8, color: Color(0xFFF97316)),
-      _StressZone(label: 'Cao', range: '9–10', from: 9, to: 10, color: Color(0xFFEF4444)),
+      _StressZone(
+        label: 'Bình tĩnh',
+        range: '1–2',
+        from: 1,
+        to: 2,
+        color: Color(0xFF22C55E),
+      ),
+      _StressZone(
+        label: 'Bình thường',
+        range: '3–4',
+        from: 3,
+        to: 4,
+        color: Color(0xFF86EFAC),
+      ),
+      _StressZone(
+        label: 'Nhẹ',
+        range: '5–6',
+        from: 5,
+        to: 6,
+        color: Color(0xFFFACC15),
+      ),
+      _StressZone(
+        label: 'Vừa',
+        range: '7–8',
+        from: 7,
+        to: 8,
+        color: Color(0xFFF97316),
+      ),
+      _StressZone(
+        label: 'Cao',
+        range: '9–10',
+        from: 9,
+        to: 10,
+        color: Color(0xFFEF4444),
+      ),
     ];
 
     Color stressColor(int s) {
@@ -1121,7 +1159,10 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
               ),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: stressColor(stressInt).withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
@@ -1203,8 +1244,12 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                           '$val',
                           style: TextStyle(
                             fontSize: active ? 13 : 11,
-                            fontWeight: active ? FontWeight.w800 : FontWeight.w400,
-                            color: active ? stressColor(stressInt) : AppColors.neutral500,
+                            fontWeight: active
+                                ? FontWeight.w800
+                                : FontWeight.w400,
+                            color: active
+                                ? stressColor(stressInt)
+                                : AppColors.neutral500,
                           ),
                         );
                       }),
@@ -1220,11 +1265,17 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
             spacing: 8,
             runSpacing: 8,
             children: zones.map((zone) {
-              final bool active = stressInt >= zone.from && stressInt <= zone.to;
+              final bool active =
+                  stressInt >= zone.from && stressInt <= zone.to;
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
-                  color: active ? zone.color.withValues(alpha: 0.18) : AppColors.neutral100,
+                  color: active
+                      ? zone.color.withValues(alpha: 0.18)
+                      : AppColors.neutral100,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: active ? zone.color : AppColors.neutral200,
@@ -1766,8 +1817,11 @@ class _WaveChartPainter extends CustomPainter {
     }
 
     // X-axis time ticks every 10 data points (~5s)
-    final int maxLen = [alpha.length, beta.length, delta.length]
-        .reduce((a, b) => a > b ? a : b);
+    final int maxLen = [
+      alpha.length,
+      beta.length,
+      delta.length,
+    ].reduce((a, b) => a > b ? a : b);
     for (int i = 0; i < maxLen; i += 10) {
       final x = i * pointSpacing;
       canvas.drawLine(
