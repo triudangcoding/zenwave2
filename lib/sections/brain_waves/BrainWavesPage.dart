@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/breathing_exercise.dart';
@@ -1647,6 +1648,15 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         const SizedBox(height: 10),
         ...recs.breathing.map((r) => _buildBreathingRecCard(r)),
         const SizedBox(height: 20),
+        // ── Sound section ──
+        _buildRecSectionHeader(
+          icon: Icons.headphones,
+          title: 'Âm thanh thiền định khuyến nghị',
+          color: const Color(0xFFE67E22),
+        ),
+        const SizedBox(height: 10),
+        ...recs.sounds.map((r) => _buildSoundRecCard(r)),
+        const SizedBox(height: 20),
         // ── Meditation section ──
         _buildRecSectionHeader(
           icon: Icons.self_improvement,
@@ -1869,6 +1879,123 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     );
   }
 
+  Widget _buildSoundRecCard(_SoundRec rec) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () async {
+            final uri = Uri.tryParse(rec.youtubeUrl);
+            if (uri != null && await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFFFE0C0)),
+            ),
+            child: Row(
+              children: [
+                // Thumbnail
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    rec.thumbnailUrl,
+                    width: 56,
+                    height: 56,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE67E22).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        rec.icon,
+                        color: const Color(0xFFE67E22),
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        rec.title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.neutral800,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            rec.category,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFFE67E22),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            rec.duration,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.neutral500,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        rec.reason,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.neutral600,
+                          height: 1.4,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE67E22).withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow_rounded,
+                    color: Color(0xFFE67E22),
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   _Recommendations _getRecommendations() {
     if (_overallScore >= 7.5) {
       // Relaxed — maintain and deepen
@@ -1906,6 +2033,32 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
             reason:
                 'Duy trì sóng Alpha từ sáng sớm giúp bạn giữ trạng thái '
                 'bình tĩnh và sáng tạo suốt cả ngày.',
+          ),
+        ],
+        sounds: [
+          _SoundRec(
+            title: 'Nhạc thiền tĩnh lặng — Sóng Alpha sâu',
+            icon: Icons.waves,
+            duration: '60 phút',
+            category: 'Thư giãn sâu',
+            reason:
+                'Sóng Alpha ổn định — âm thanh tần số thấp giúp kéo dài '
+                'trạng thái thiền định và đưa bạn vào giấc ngủ sâu.',
+            youtubeUrl: 'https://www.youtube.com/watch?v=WPni755-Krg',
+            thumbnailUrl:
+                'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=400&q=80',
+          ),
+          _SoundRec(
+            title: 'Tiếng mưa rơi nhẹ nhàng',
+            icon: Icons.water_drop,
+            duration: '3 giờ',
+            category: 'Âm thanh thiên nhiên',
+            reason:
+                'Tiếng mưa tạo hiệu ứng "white noise" tự nhiên, duy trì '
+                'sóng Alpha và giúp não bộ thư giãn tối đa.',
+            youtubeUrl: 'https://www.youtube.com/watch?v=mPZkdNFkNps',
+            thumbnailUrl:
+                'https://images.unsplash.com/photo-1515694346937-94d85e41e6f0?auto=format&fit=crop&w=400&q=80',
           ),
         ],
       );
@@ -1947,6 +2100,32 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                 'Beta căng thẳng sang Beta tập trung lành mạnh.',
           ),
         ],
+        sounds: [
+          _SoundRec(
+            title: 'Nhạc piano nhẹ nhàng giảm stress',
+            icon: Icons.piano,
+            duration: '45 phút',
+            category: 'Giảm stress',
+            reason:
+                'Sóng Beta tăng nhẹ — giai điệu piano chậm giúp hạ nhịp tim '
+                'và chuyển não từ Beta sang Alpha một cách tự nhiên.',
+            youtubeUrl: 'https://www.youtube.com/watch?v=77ZozI0rw7w',
+            thumbnailUrl:
+                'https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?auto=format&fit=crop&w=400&q=80',
+          ),
+          _SoundRec(
+            title: 'Âm thanh rừng & suối chảy',
+            icon: Icons.forest,
+            duration: '2 giờ',
+            category: 'Âm thanh thiên nhiên',
+            reason:
+                'Âm thanh thiên nhiên kích thích hệ phó giao cảm, '
+                'giảm cortisol và giúp sóng Alpha phục hồi.',
+            youtubeUrl: 'https://www.youtube.com/watch?v=eKFTSSKCzWA',
+            thumbnailUrl:
+                'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=400&q=80',
+          ),
+        ],
       );
     } else if (_overallScore >= 4.0) {
       // Moderate stress — active de-stress
@@ -1986,6 +2165,44 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                 'Body Scan giúp nhận diện các điểm căng cứng cơ thể — '
                 'mối liên hệ trực tiếp với sóng Beta cao. '
                 'Thả lỏng từng nhóm cơ giúp não chuyển sang Alpha.',
+          ),
+        ],
+        sounds: [
+          _SoundRec(
+            title: 'Nhạc trị liệu 432Hz — Giải toả căng thẳng',
+            icon: Icons.music_note,
+            duration: '1 giờ',
+            category: 'Trị liệu',
+            reason:
+                'Tần số 432Hz được nghiên cứu giúp giảm lo âu và '
+                'hạ hoạt động Beta. Phù hợp với mức căng thẳng hiện tại.',
+            youtubeUrl: 'https://www.youtube.com/watch?v=aEqlQvczMJQ',
+            thumbnailUrl:
+                'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&w=400&q=80',
+          ),
+          _SoundRec(
+            title: 'Tiếng sóng biển — Thư giãn sâu',
+            icon: Icons.beach_access,
+            duration: '2 giờ',
+            category: 'Âm thanh thiên nhiên',
+            reason:
+                'Sóng biển tạo nhịp chậm đều đặn, kích thích sóng Alpha '
+                'và giúp hệ thần kinh hạ nhiệt khi Beta cao.',
+            youtubeUrl: 'https://www.youtube.com/watch?v=bn9F19Hi1Lk',
+            thumbnailUrl:
+                'https://images.unsplash.com/photo-1505118380757-91f5f5632de0?auto=format&fit=crop&w=400&q=80',
+          ),
+          _SoundRec(
+            title: 'Nhạc thiền Tây Tạng — Chuông xoay',
+            icon: Icons.self_improvement,
+            duration: '1 giờ 30 phút',
+            category: 'Thiền định',
+            reason:
+                'Chuông xoay Tây Tạng tạo rung động giúp đồng bộ sóng não, '
+                'giảm Beta và tăng trạng thái thiền định Alpha-Theta.',
+            youtubeUrl: 'https://www.youtube.com/watch?v=D8KMUkpMY5M',
+            thumbnailUrl:
+                'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=400&q=80',
           ),
         ],
       );
@@ -2037,6 +2254,46 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                 'Căng thẳng cao thường tích tụ ở cơ thể. Body Scan giúp '
                 'nhận diện và thả lỏng từng điểm căng cứng, '
                 'trực tiếp hạ hoạt động Beta.',
+          ),
+        ],
+        sounds: [
+          _SoundRec(
+            title: 'Nhạc trị liệu 528Hz — Chữa lành & phục hồi',
+            icon: Icons.healing,
+            duration: '2 giờ',
+            category: 'Trị liệu',
+            reason:
+                'Mức căng thẳng cao — tần số 528Hz (Solfeggio) được dùng '
+                'trong liệu pháp âm thanh để giảm cortisol và phục hồi '
+                'sóng Alpha bị ức chế.',
+            youtubeUrl: 'https://www.youtube.com/watch?v=aEqlQvczMJQ',
+            thumbnailUrl:
+                'https://images.unsplash.com/photo-1478737270239-2f02b77fc618?auto=format&fit=crop&w=400&q=80',
+          ),
+          _SoundRec(
+            title: 'Tiếng mưa rào & sấm xa — Xoá căng thẳng',
+            icon: Icons.thunderstorm,
+            duration: '3 giờ',
+            category: 'Âm thanh thiên nhiên',
+            reason:
+                'Tiếng mưa rào kết hợp sấm xa tạo hiệu ứng che phủ mạnh, '
+                'giúp não ngừng suy nghĩ quá mức và hạ Beta nhanh chóng.',
+            youtubeUrl: 'https://www.youtube.com/watch?v=mPZkdNFkNps',
+            thumbnailUrl:
+                'https://images.unsplash.com/photo-1428592953211-077101b2021b?auto=format&fit=crop&w=400&q=80',
+          ),
+          _SoundRec(
+            title: 'Nhạc thiền Delta — Giấc ngủ phục hồi',
+            icon: Icons.nightlight_round,
+            duration: '8 giờ',
+            category: 'Giấc ngủ sâu',
+            reason:
+                'Khi Beta quá cao, giấc ngủ sâu là ưu tiên phục hồi. '
+                'Nhạc tần số Delta (0.5-4Hz) giúp não chuyển sang trạng thái '
+                'nghỉ ngơi và tái tạo.',
+            youtubeUrl: 'https://www.youtube.com/watch?v=WPni755-Krg',
+            thumbnailUrl:
+                'https://images.unsplash.com/photo-1507400492013-162706c8c05e?auto=format&fit=crop&w=400&q=80',
           ),
         ],
       );
@@ -2810,10 +3067,34 @@ class _MeditationRec {
   final String reason;
 }
 
+class _SoundRec {
+  const _SoundRec({
+    required this.title,
+    required this.icon,
+    required this.duration,
+    required this.category,
+    required this.reason,
+    required this.youtubeUrl,
+    required this.thumbnailUrl,
+  });
+  final String title;
+  final IconData icon;
+  final String duration;
+  final String category;
+  final String reason;
+  final String youtubeUrl;
+  final String thumbnailUrl;
+}
+
 class _Recommendations {
-  const _Recommendations({required this.breathing, required this.meditation});
+  const _Recommendations({
+    required this.breathing,
+    required this.meditation,
+    required this.sounds,
+  });
   final List<_BreathingRec> breathing;
   final List<_MeditationRec> meditation;
+  final List<_SoundRec> sounds;
 }
 
 // ── Stress zone data ──────────────────────────────────────────────────────
