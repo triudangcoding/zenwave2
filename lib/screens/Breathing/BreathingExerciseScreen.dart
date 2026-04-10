@@ -322,12 +322,15 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
         final int? stress = AppStateService.stressScore;
         return AlertDialog(
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16)),
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: const Row(
             children: [
               Text('🎉 ', style: TextStyle(fontSize: 22)),
-              Text('Hoàn thành!',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
+              Text(
+                'Hoàn thành!',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ],
           ),
           content: Column(
@@ -338,22 +341,28 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
                 'Bạn đã hoàn thành bài tập thở. Tuyệt vời!',
                 style: TextStyle(fontSize: 14),
               ),
-              if (stress != null) ...[  
+              if (stress != null) ...[
                 const SizedBox(height: 12),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF22C55E).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                        color: const Color(0xFF22C55E).withValues(alpha: 0.4)),
+                      color: const Color(0xFF22C55E).withValues(alpha: 0.4),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.trending_down,
-                          color: Color(0xFF22C55E), size: 18),
+                      const Icon(
+                        Icons.trending_down,
+                        color: Color(0xFF22C55E),
+                        size: 18,
+                      ),
                       const SizedBox(width: 6),
                       Text(
                         'Căng thẳng hiện tại: $stress/10',
@@ -375,8 +384,10 @@ class _BreathingExerciseScreenState extends State<BreathingExerciseScreen>
                 Navigator.of(context).pop();
                 Navigator.of(context).pop();
               },
-              child: const Text('Xem kết quả',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
+              child: const Text(
+                'Xem kết quả',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
           ],
         );

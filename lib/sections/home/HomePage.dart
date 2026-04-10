@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../screens/assessment/AssessmentHubScreen.dart';
 import '../../screens/Breathing/BreathingListScreen.dart';
 import '../../services/app_state_service.dart';
+import '../../services/ble_service.dart';
 import '../brain_overview/BrainOverviewPage.dart';
 import '../meditation_space/MeditationSpacePage.dart';
 import 'StartMeditation2.dart';
@@ -54,8 +55,7 @@ class _HomePageState extends State<HomePage> {
                       builder: (_, __, ___) => ValueListenableBuilder<int?>(
                         valueListenable:
                             AppStateService.relaxationScoreNotifier,
-                        builder: (_, __, ___) =>
-                            _buildRecommendedCard(context),
+                        builder: (_, __, ___) => _buildRecommendedCard(context),
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -64,24 +64,31 @@ class _HomePageState extends State<HomePage> {
                     // EEG scores section (replaces the old "daily" section)
                     ValueListenableBuilder<bool>(
                       valueListenable: AppStateService.deviceConnectedNotifier,
-                      builder: (_, __, ___) =>
-                          ValueListenableBuilder<int?>(
-                            valueListenable:
-                                AppStateService.stressScoreNotifier,
-                            builder: (_, __, ___) =>
-                                ValueListenableBuilder<int?>(
-                                  valueListenable:
-                                      AppStateService.relaxationScoreNotifier,
-                                  builder: (_, __, ___) =>
-                                      _buildEegSection(context),
-                                ),
-                          ),
+                      builder: (_, __, ___) => ValueListenableBuilder<int?>(
+                        valueListenable: AppStateService.stressScoreNotifier,
+                        builder: (_, __, ___) => ValueListenableBuilder<int?>(
+                          valueListenable:
+                              AppStateService.relaxationScoreNotifier,
+                          builder: (_, __, ___) => _buildEegSection(context),
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 14),
                     // Stress scale section
                     ValueListenableBuilder<int?>(
                       valueListenable: AppStateService.stressScoreNotifier,
-                      builder: (_, __, ___) => _buildStressScaleSection(),
+                      builder: (_, __, ___) => ValueListenableBuilder<bool>(
+                        valueListenable:
+                            AppStateService.isPredictedScoreNotifier,
+                        builder: (_, __, ___) => _buildStressScaleSection(),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    // Recommendations section
+                    ValueListenableBuilder<int?>(
+                      valueListenable: AppStateService.stressScoreNotifier,
+                      builder: (_, __, ___) =>
+                          _buildRecommendedContentSection(context),
                     ),
                     const SizedBox(height: 14),
                     const Text(
@@ -419,15 +426,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildEegSection(BuildContext context) {
-    final int? stress = AppStateService.stressScore;
-    final int? relax = AppStateService.relaxationScore;
     final bool connected = AppStateService.isDeviceConnected;
+    final bool? touchDetected = AppStateService.isTouchDetected;
+    final String deviceName =
+        AppStateService.connectedDeviceName ?? BleService.targetName;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Chỉ số sóng não',
+          'Thiết bị cảm biến',
           style: TextStyle(
             fontSize: 19,
             fontWeight: FontWeight.w700,
@@ -435,85 +443,9 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         const SizedBox(height: 8),
-        if (stress == null || relax == null)
-          // ── No data state ──────────────────────────────────────────────
-          GestureDetector(
-            onTap: () => _openConnectDeviceSheet(context),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-              decoration: BoxDecoration(
-                color: AppColors.homeSectionCardBackground,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.homeSectionCardBorder),
-                boxShadow: const [
-                  BoxShadow(
-                    color: AppColors.homeCardShadow,
-                    blurRadius: 6,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: connected
-                          ? AppColors.teal100
-                          : AppColors.neutral100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      connected
-                          ? Icons.sensors
-                          : Icons.bluetooth_searching,
-                      color: connected
-                          ? AppColors.cyan600
-                          : AppColors.neutral500,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          connected
-                              ? 'Đang chờ dữ liệu EEG...'
-                              : 'Chưa kết nối thiết bị',
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.neutral900,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          connected
-                              ? 'Nhận dữ liệu từ headband để xem chỉ số.'
-                              : 'Nhấn để kết nối headband và bắt đầu đo.',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.neutral600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right,
-                    color: AppColors.neutral500,
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          // ── Has data state ─────────────────────────────────────────────
-          Container(
+        GestureDetector(
+          onTap: () => _openConnectDeviceSheet(context),
+          child: Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -534,69 +466,104 @@ class _HomePageState extends State<HomePage> {
                 Row(
                   children: [
                     Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: AppColors.green500,
-                        shape: BoxShape.circle,
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: connected
+                            ? AppColors.teal100
+                            : AppColors.neutral100,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'Dữ liệu thời gian thực',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: AppColors.neutral600,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _ScoreGauge(
-                        label: 'Căng thẳng',
-                        score: stress,
-                        highIsBad: true,
+                      child: Icon(
+                        connected
+                            ? Icons.bluetooth_connected
+                            : Icons.bluetooth_searching,
+                        color: connected
+                            ? AppColors.cyan600
+                            : AppColors.neutral500,
+                        size: 22,
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: _ScoreGauge(
-                        label: 'Thư giãn',
-                        score: relax,
-                        highIsBad: false,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            connected
+                                ? 'Đã kết nối $deviceName'
+                                : 'Chưa kết nối thiết bị',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.neutral900,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            connected
+                                ? 'Đang lắng nghe notify từ ESP32.'
+                                : 'Nhấn để quét và kết nối ESP32 BLE.',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.neutral600,
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right,
+                      color: AppColors.neutral500,
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  _eegInterpretation(stress, relax),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.neutral700,
-                    height: 1.45,
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: connected
+                        ? (touchDetected == true
+                              ? AppColors.teal100
+                              : AppColors.neutral100)
+                        : AppColors.neutral100,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        touchDetected == true ? Icons.touch_app : Icons.sensors,
+                        color: connected
+                            ? AppColors.cyan700
+                            : AppColors.neutral500,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          !connected
+                              ? 'Kết nối ESP32 để xem trạng thái chạm.'
+                              : touchDetected == null
+                              ? 'Đã kết nối, đang chờ dữ liệu từ cảm biến.'
+                              : touchDetected
+                              ? 'ESP32 báo đang có chạm da.'
+                              : 'ESP32 báo hiện không có chạm da.',
+                          style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.neutral900,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
+        ),
       ],
     );
-  }
-
-  String _eegInterpretation(int stress, int relax) {
-    if (stress >= 7) {
-      return 'Mức căng thẳng đang cao ($stress/10). Hãy thử bài tập hít thở để hạ nhiệt.';
-    } else if (relax <= 3) {
-      return 'Mức thư giãn còn thấp ($relax/10). Nghe nhạc nhẹ hoặc thiền có thể giúp bạn.';
-    } else if (stress <= 3 && relax >= 7) {
-      return 'Tuyệt vời! Tâm trí bạn đang rất cân bằng. Tiếp tục duy trì nhé.';
-    }
-    return 'Chỉ số tương đối ổn định. Một bài thiền ngắn sẽ giúp bạn củng cố thêm.';
   }
 
   // ── Stress scale 1-10 section ─────────────────────────────────────────────
@@ -606,16 +573,41 @@ class _HomePageState extends State<HomePage> {
 
     // Zone definitions: label, range, color
     const List<_StressZone> zones = [
-      _StressZone(label: 'Bình tĩnh', range: '1–2', from: 1, to: 2,
-          color: Color(0xFF22C55E)),
-      _StressZone(label: 'Bình thường', range: '3–4', from: 3, to: 4,
-          color: Color(0xFF86EFAC)),
-      _StressZone(label: 'Nhẹ', range: '5–6', from: 5, to: 6,
-          color: Color(0xFFFACC15)),
-      _StressZone(label: 'Vừa', range: '7–8', from: 7, to: 8,
-          color: Color(0xFFF97316)),
-      _StressZone(label: 'Cao', range: '9–10', from: 9, to: 10,
-          color: Color(0xFFEF4444)),
+      _StressZone(
+        label: 'Bình tĩnh',
+        range: '1–2',
+        from: 1,
+        to: 2,
+        color: Color(0xFF22C55E),
+      ),
+      _StressZone(
+        label: 'Bình thường',
+        range: '3–4',
+        from: 3,
+        to: 4,
+        color: Color(0xFF86EFAC),
+      ),
+      _StressZone(
+        label: 'Nhẹ',
+        range: '5–6',
+        from: 5,
+        to: 6,
+        color: Color(0xFFFACC15),
+      ),
+      _StressZone(
+        label: 'Vừa',
+        range: '7–8',
+        from: 7,
+        to: 8,
+        color: Color(0xFFF97316),
+      ),
+      _StressZone(
+        label: 'Cao',
+        range: '9–10',
+        from: 9,
+        to: 10,
+        color: Color(0xFFEF4444),
+      ),
     ];
 
     return Column(
@@ -634,11 +626,16 @@ class _HomePageState extends State<HomePage> {
             const Spacer(),
             if (stress != null)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: _stressColor(stress).withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _stressColor(stress).withValues(alpha: 0.4)),
+                  border: Border.all(
+                    color: _stressColor(stress).withValues(alpha: 0.4),
+                  ),
                 ),
                 child: Text(
                   '$stress / 10',
@@ -651,7 +648,34 @@ class _HomePageState extends State<HomePage> {
               ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
+        // "Predicted" disclaimer badge
+        if (AppStateService.isPredictedScore)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.auto_awesome,
+                  size: 14,
+                  color: AppColors.cyan600,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'KQ được dự đoán dựa trên 10 câu hỏi bạn vừa làm. '
+                    'Kết nối headband để đo chính xác hơn.',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: AppColors.cyan700,
+                      fontStyle: FontStyle.italic,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
@@ -755,21 +779,23 @@ class _HomePageState extends State<HomePage> {
                 spacing: 8,
                 runSpacing: 8,
                 children: zones.map((zone) {
-                  final bool active = stress != null &&
-                      stress >= zone.from && stress <= zone.to;
+                  final bool active =
+                      stress != null &&
+                      stress >= zone.from &&
+                      stress <= zone.to;
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 220),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: active
                           ? zone.color.withValues(alpha: 0.18)
                           : AppColors.neutral100,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: active
-                            ? zone.color
-                            : AppColors.neutral200,
+                        color: active ? zone.color : AppColors.neutral200,
                         width: active ? 1.5 : 1,
                       ),
                     ),
@@ -792,9 +818,7 @@ class _HomePageState extends State<HomePage> {
                             fontWeight: active
                                 ? FontWeight.w700
                                 : FontWeight.w400,
-                            color: active
-                                ? zone.color
-                                : AppColors.neutral600,
+                            color: active ? zone.color : AppColors.neutral600,
                           ),
                         ),
                       ],
@@ -808,7 +832,9 @@ class _HomePageState extends State<HomePage> {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: _stressColor(stress).withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
@@ -827,10 +853,7 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(height: 12),
                 const Text(
                   'Kết nối headband để đo mức độ căng thẳng của bạn.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.neutral500,
-                  ),
+                  style: TextStyle(fontSize: 13, color: AppColors.neutral500),
                 ),
               ],
             ],
@@ -848,11 +871,278 @@ class _HomePageState extends State<HomePage> {
     return const Color(0xFFEF4444);
   }
 
+  // ── Recommended content section ───────────────────────────────────────────
+
+  Widget _buildRecommendedContentSection(BuildContext context) {
+    final int? stress = AppStateService.stressScore;
+    if (stress == null) return const SizedBox.shrink();
+
+    // Build ordered list of recommendations based on stress level
+    final List<_ContentRec> recs = [];
+    if (stress >= 7) {
+      recs.add(
+        _ContentRec(
+          icon: Icons.air,
+          color: const Color(0xFF36CFC9),
+          label: 'Bài tập thở',
+          sublabel: '4-7-8 · Giảm căng thẳng nhanh',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const BreathingListScreen(),
+            ),
+          ),
+        ),
+      );
+      recs.add(
+        _ContentRec(
+          icon: Icons.self_improvement,
+          color: const Color(0xFF7C3AED),
+          label: 'Thiền định',
+          sublabel: 'Không gian &  hướng dẫn thiền cá nhân',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const MeditationSpacePage(),
+            ),
+          ),
+        ),
+      );
+      recs.add(
+        _ContentRec(
+          icon: Icons.music_note,
+          color: const Color(0xFF2563EB),
+          label: 'Nhạc thư giãn',
+          sublabel: 'Âm nhạc dịu êm giúp hạ nhiệt',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const MeditationSpacePage(),
+            ),
+          ),
+        ),
+      );
+    } else if (stress >= 4) {
+      recs.add(
+        _ContentRec(
+          icon: Icons.self_improvement,
+          color: const Color(0xFF7C3AED),
+          label: 'Thiền định ngắn',
+          sublabel: '5 phút · Duy trì sự bình tâm',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const MeditationSpacePage(),
+            ),
+          ),
+        ),
+      );
+      recs.add(
+        _ContentRec(
+          icon: Icons.air,
+          color: const Color(0xFF36CFC9),
+          label: 'Bài tập thở',
+          sublabel: 'Thở hộp · Duy trì cân bằng',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const BreathingListScreen(),
+            ),
+          ),
+        ),
+      );
+      recs.add(
+        _ContentRec(
+          icon: Icons.music_note,
+          color: const Color(0xFF2563EB),
+          label: 'Nhạc thư giãn',
+          sublabel: 'Tập trung &  thư giãn nhẹ',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const MeditationSpacePage(),
+            ),
+          ),
+        ),
+      );
+    } else {
+      recs.add(
+        _ContentRec(
+          icon: Icons.self_improvement,
+          color: const Color(0xFF7C3AED),
+          label: 'Thiền định sâu',
+          sublabel: 'Bạn đang ổn — đi sâu hơn nhé',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const MeditationSpacePage(),
+            ),
+          ),
+        ),
+      );
+      recs.add(
+        _ContentRec(
+          icon: Icons.music_note,
+          color: const Color(0xFF2563EB),
+          label: 'Nhạc tập trung',
+          sublabel: 'Binaural beats · Tăng năng suất',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const MeditationSpacePage(),
+            ),
+          ),
+        ),
+      );
+      recs.add(
+        _ContentRec(
+          icon: Icons.air,
+          color: const Color(0xFF36CFC9),
+          label: 'Bài tập thở',
+          sublabel: 'Duy trì trạng thái tốt',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const BreathingListScreen(),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              'Gợi ý cho bạn',
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
+                color: AppColors.neutral900,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.cyan100,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'Dựa trên mức stress $stress/10',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppColors.cyan700,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ...recs.asMap().entries.map((e) {
+          final int i = e.key;
+          final _ContentRec rec = e.value;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              onTap: rec.onTap,
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: i == 0
+                      ? rec.color.withValues(alpha: 0.08)
+                      : AppColors.homeSectionCardBackground,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: i == 0
+                        ? rec.color.withValues(alpha: 0.35)
+                        : AppColors.homeSectionCardBorder,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: rec.color.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(rec.icon, color: rec.color, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                rec.label,
+                                style: TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: i == 0
+                                      ? rec.color
+                                      : AppColors.neutral900,
+                                ),
+                              ),
+                              if (i == 0) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: rec.color,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    'Ưu tiên',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            rec.sublabel,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: AppColors.neutral500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      color: AppColors.neutral400,
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
   static String _stressAdvice(int score) {
-    if (score <= 2) return '✦ Bạn đang rất bình tĩnh. Duy trì trạng thái này thật tuyệt vời!';
-    if (score <= 4) return '✦ Mức căng thẳng ở ngưỡng bình thường. Bạn đang kiểm soát tốt.';
-    if (score <= 6) return '✦ Căng thẳng ở mức nhẹ. Thử một bài thiền ngắn để giữ cân bằng.';
-    if (score <= 8) return '✦ Mức căng thẳng khá cao. Hãy thực hành hít thở 4-7-8 ngay bây giờ.';
+    if (score <= 2)
+      return '✦ Bạn đang rất bình tĩnh. Duy trì trạng thái này thật tuyệt vời!';
+    if (score <= 4)
+      return '✦ Mức căng thẳng ở ngưỡng bình thường. Bạn đang kiểm soát tốt.';
+    if (score <= 6)
+      return '✦ Căng thẳng ở mức nhẹ. Thử một bài thiền ngắn để giữ cân bằng.';
+    if (score <= 8)
+      return '✦ Mức căng thẳng khá cao. Hãy thực hành hít thở 4-7-8 ngay bây giờ.';
     return '✦ Căng thẳng ở mức cao nhất. Dừng lại, hít thở sâu và thư giãn hoàn toàn.';
   }
 
@@ -917,369 +1207,399 @@ class _ConnectDeviceSideSheet extends StatefulWidget {
 }
 
 class _ConnectDeviceSideSheetState extends State<_ConnectDeviceSideSheet> {
-  bool _isScanning = true;
+  final BleService _bleService = BleService.instance;
   bool _isConnecting = false;
-  bool _isConnected = false;
-  bool _isReceivingData = false;
-  String _selectedDevice = 'ZenWave NeuroBand X2';
-  double _batteryLevel = 0.78;
-  Timer? _scanTimer;
+  String? _selectedDeviceId;
+  String? _errorMessage;
 
-  final List<String> _devices = <String>[
-    'ZenWave NeuroBand X2',
-    'ZenWave NeuroBand Pro',
-    'MindFlow Sensor A1',
-  ];
+  // ── Helpers derived from notifiers ──────────────────────────────────────
+
+  List<BleDeviceInfo> get _devices => _bleService.scanResultsNotifier.value;
+
+  BleDeviceInfo? get _selectedDevice => _devices
+      .cast<BleDeviceInfo?>()
+      .firstWhere((d) => d?.id == _selectedDeviceId, orElse: () => null);
 
   @override
   void initState() {
     super.initState();
-    _isConnected = AppStateService.isDeviceConnected;
-    _scanTimer = Timer(const Duration(seconds: 2), () {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isScanning = false;
-      });
-    });
+    _bleService.scanResultsNotifier.addListener(_rebuild);
+    _bleService.isScanningNotifier.addListener(_rebuild);
+    AppStateService.deviceConnectedNotifier.addListener(_rebuild);
+    unawaited(_bleService.startScan());
   }
 
   @override
   void dispose() {
-    _scanTimer?.cancel();
+    _bleService.scanResultsNotifier.removeListener(_rebuild);
+    _bleService.isScanningNotifier.removeListener(_rebuild);
+    AppStateService.deviceConnectedNotifier.removeListener(_rebuild);
+    _bleService.stopScan();
     super.dispose();
   }
 
-  Future<void> _connectToDevice() async {
-    setState(() {
-      _isConnecting = true;
-      _isConnected = false;
-    });
-
-    await Future<void>.delayed(const Duration(milliseconds: 1400));
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _isConnecting = false;
-      _isConnected = true;
-      _batteryLevel = 0.82;
-    });
-    AppStateService.deviceConnectedNotifier.value = true;
-    AppStateService.resetScores();
+  void _rebuild() {
+    if (mounted) setState(() {});
   }
 
-  /// Simulates receiving an EEG measurement from the headband.
-  Future<void> _receiveEegData() async {
-    setState(() => _isReceivingData = true);
-    await Future<void>.delayed(const Duration(milliseconds: 2200));
-    if (!mounted) return;
+  Future<void> _connectToSelectedDevice() async {
+    final device = _selectedDevice;
+    if (device == null) return;
 
-    // Generate demo scores — vary each call for a realistic feel
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final stress = 4 + (now % 5).toInt(); // 4-8
-    final relax = 10 - stress + 1;        // inverse trend ~2-7
+    setState(() {
+      _isConnecting = true;
+    });
 
-    AppStateService.updateScores(stress: stress, relaxation: relax);
-    setState(() => _isReceivingData = false);
-    if (mounted) Navigator.pop(context);
+    try {
+      await _bleService.connect(device);
+      if (mounted) {
+        setState(() {
+          _errorMessage = null;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = error.toString().replaceFirst('Exception: ', '');
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isConnecting = false);
+    }
+  }
+
+  Future<void> _disconnect() async {
+    await _bleService.disconnect();
+    if (mounted) {
+      setState(() {
+        _selectedDeviceId = null;
+      });
+      unawaited(_bleService.startScan());
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Kết nối thiết bị sóng não',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.neutral900,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: AppColors.neutral700),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.teal100,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.teal300),
-                ),
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: 46,
-                      height: 46,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          CircularProgressIndicator(
-                            value: _batteryLevel,
-                            strokeWidth: 4,
-                            backgroundColor: AppColors.teal200,
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                              AppColors.cyan500,
-                            ),
-                          ),
-                          Text(
-                            '${(_batteryLevel * 100).round()}%',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.cyan700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _isConnected
-                            ? 'Đã kết nối với $_selectedDevice'
-                            : 'Trạng thái pin thiết bị khả dụng',
-                        style: const TextStyle(
-                          fontSize: 13.5,
-                          color: AppColors.neutral900,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  const Text(
-                    'Thiết bị gần đây',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.neutral800,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (_isScanning)
-                    const Text(
-                      'Đang quét...',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: AppColors.cyan700,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: _devices.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (_, index) {
-                    final deviceName = _devices[index];
-                    final selected = _selectedDevice == deviceName;
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () {
-                        setState(() {
-                          _selectedDevice = deviceName;
-                          _isConnected = false;
-                        });
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: selected ? AppColors.teal100 : AppColors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: selected
-                                ? AppColors.cyan500
-                                : AppColors.homeQuickTileBorder,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? AppColors.cyan200
-                                    : AppColors.neutral100,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Icon(
-                                Icons.sensors,
-                                color: selected
-                                    ? AppColors.cyan700
-                                    : AppColors.neutral700,
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+    return ValueListenableBuilder<List<BleDeviceInfo>>(
+      valueListenable: _bleService.scanResultsNotifier,
+      builder: (_, devices, __) {
+        return ValueListenableBuilder<bool>(
+          valueListenable: _bleService.isScanningNotifier,
+          builder: (_, isScanning, __) {
+            return ValueListenableBuilder<String?>(
+              valueListenable: AppStateService.connectedDeviceNameNotifier,
+              builder: (_, connectedName, __) {
+                return ValueListenableBuilder<bool?>(
+                  valueListenable: AppStateService.touchDetectedNotifier,
+                  builder: (_, touchDetected, __) {
+                    final bool isConnected = connectedName != null;
+                    final BleDeviceInfo? selectedDevice = devices
+                        .cast<BleDeviceInfo?>()
+                        .firstWhere(
+                          (device) => device?.id == _selectedDeviceId,
+                          orElse: () => null,
+                        );
+
+                    return Scaffold(
+                      backgroundColor: AppColors.white,
+                      body: SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
                                 children: [
-                                  Text(
-                                    deviceName,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.neutral900,
+                                  const Expanded(
+                                    child: Text(
+                                      'Kết nối thiết bị sóng não',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.neutral900,
+                                      ),
                                     ),
                                   ),
-                                  Text(
-                                    _isConnected && selected
-                                        ? 'Đã ghép nối'
-                                        : 'Sẵn sàng kết nối',
-                                    style: const TextStyle(
-                                      fontSize: 12.5,
+                                  IconButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    icon: const Icon(
+                                      Icons.close,
                                       color: AppColors.neutral700,
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                            if (_isConnected && selected)
-                              const Icon(
-                                Icons.check_circle,
-                                color: AppColors.green600,
+                              const SizedBox(height: 10),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: AppColors.teal100,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: AppColors.teal300),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 46,
+                                      height: 46,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.white,
+                                        borderRadius: BorderRadius.circular(23),
+                                      ),
+                                      child: Icon(
+                                        isConnected
+                                            ? Icons.bluetooth_connected
+                                            : Icons.bluetooth_searching,
+                                        color: AppColors.cyan700,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        isConnected
+                                            ? 'Đã kết nối với $connectedName'
+                                            : 'Tìm ESP32 BLE để bắt đầu kết nối',
+                                        style: const TextStyle(
+                                          fontSize: 13.5,
+                                          color: AppColors.neutral900,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                          ],
+                              if (_errorMessage != null) ...[
+                                const SizedBox(height: 10),
+                                Text(
+                                  _errorMessage!,
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    color: AppColors.red500,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 14),
+                              Row(
+                                children: [
+                                  const Text(
+                                    'Thiết bị tìm thấy',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.neutral800,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  TextButton(
+                                    onPressed: isScanning
+                                        ? null
+                                        : () => unawaited(
+                                            _bleService.startScan(),
+                                          ),
+                                    child: Text(
+                                      isScanning ? 'Đang quét...' : 'Quét lại',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Expanded(
+                                child: devices.isEmpty
+                                    ? const Center(
+                                        child: Text(
+                                          'Chưa tìm thấy ESP32S3_TOUCH.',
+                                          style: TextStyle(
+                                            color: AppColors.neutral600,
+                                          ),
+                                        ),
+                                      )
+                                    : ListView.separated(
+                                        itemCount: devices.length,
+                                        separatorBuilder: (_, __) =>
+                                            const SizedBox(height: 8),
+                                        itemBuilder: (_, index) {
+                                          final device = devices[index];
+                                          final bool selected =
+                                              _selectedDeviceId == device.id;
+                                          final bool connected =
+                                              connectedName == device.name;
+                                          return InkWell(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            onTap: () {
+                                              setState(() {
+                                                _selectedDeviceId = device.id;
+                                                _errorMessage = null;
+                                              });
+                                            },
+                                            child: Container(
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(
+                                                color: selected
+                                                    ? AppColors.teal100
+                                                    : AppColors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                                border: Border.all(
+                                                  color: selected
+                                                      ? AppColors.cyan500
+                                                      : AppColors
+                                                            .homeQuickTileBorder,
+                                                ),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  Container(
+                                                    width: 36,
+                                                    height: 36,
+                                                    decoration: BoxDecoration(
+                                                      color: selected
+                                                          ? AppColors.cyan200
+                                                          : AppColors
+                                                                .neutral100,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            10,
+                                                          ),
+                                                    ),
+                                                    child: Icon(
+                                                      Icons.memory,
+                                                      color: selected
+                                                          ? AppColors.cyan700
+                                                          : AppColors
+                                                                .neutral700,
+                                                      size: 20,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        Text(
+                                                          device.name,
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 14,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                color: AppColors
+                                                                    .neutral900,
+                                                              ),
+                                                        ),
+                                                        Text(
+                                                          connected
+                                                              ? 'Đã kết nối'
+                                                              : 'RSSI ${device.rssi ?? '--'}',
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 12.5,
+                                                                color: AppColors
+                                                                    .neutral700,
+                                                              ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  if (connected)
+                                                    const Icon(
+                                                      Icons.check_circle,
+                                                      color: AppColors.green600,
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                              ),
+                              if (isConnected) ...[
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  decoration: BoxDecoration(
+                                    color: touchDetected == true
+                                        ? AppColors.teal100
+                                        : AppColors.neutral100,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    touchDetected == null
+                                        ? 'Đang chờ notify từ cảm biến...'
+                                        : touchDetected
+                                        ? 'ESP32 đang báo có chạm da.'
+                                        : 'ESP32 đang báo chưa có chạm da.',
+                                    style: const TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.neutral900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton(
+                                  onPressed: _isConnecting
+                                      ? null
+                                      : isConnected
+                                      ? _disconnect
+                                      : selectedDevice == null
+                                      ? null
+                                      : _connectToSelectedDevice,
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: isConnected
+                                        ? AppColors.red500
+                                        : AppColors.cyan500,
+                                    disabledBackgroundColor:
+                                        AppColors.neutral300,
+                                    minimumSize: const Size.fromHeight(50),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  child: _isConnecting
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.4,
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                                  AppColors.white,
+                                                ),
+                                          ),
+                                        )
+                                      : Text(
+                                          isConnected
+                                              ? 'Ngắt kết nối'
+                                              : 'Kết nối thiết bị',
+                                          style: const TextStyle(
+                                            color: AppColors.white,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     );
                   },
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _isConnecting || _isConnected
-                      ? null
-                      : _connectToDevice,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _isConnected
-                        ? AppColors.green600
-                        : AppColors.cyan500,
-                    disabledBackgroundColor: _isConnected
-                        ? AppColors.green600
-                        : AppColors.neutral300,
-                    minimumSize: const Size.fromHeight(50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: _isConnecting
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.4,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              AppColors.white,
-                            ),
-                          ),
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              _isConnected
-                                  ? Icons.check_circle_outline
-                                  : Icons.bluetooth,
-                              size: 18,
-                              color: AppColors.white,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _isConnected
-                                  ? 'Đã kết nối thành công'
-                                  : 'Kết nối thiết bị',
-                              style: const TextStyle(color: AppColors.white),
-                            ),
-                          ],
-                        ),
-                ),
-              ),
-              if (_isConnected) ...[
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: _isReceivingData ? null : _receiveEegData,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.teal700,
-                      minimumSize: const Size.fromHeight(50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: _isReceivingData
-                        ? Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: const [
-                              SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    AppColors.white,
-                                  ),
-                                ),
-                              ),
-                              SizedBox(width: 10),
-                              Text(
-                                'Đang đo sóng não...',
-                                style: TextStyle(color: AppColors.white),
-                              ),
-                            ],
-                          )
-                        : Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: const [
-                              Icon(
-                                Icons.graphic_eq,
-                                size: 18,
-                                color: AppColors.white,
-                              ),
-                              SizedBox(width: 8),
-                              Text(
-                                'Nhận dữ liệu EEG',
-                                style: TextStyle(color: AppColors.white),
-                              ),
-                            ],
-                          ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -1501,6 +1821,23 @@ class _StressZone {
   });
 }
 
+// ── Content recommendation data class ────────────────────────────────────
+
+class _ContentRec {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String sublabel;
+  final VoidCallback onTap;
+  const _ContentRec({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.sublabel,
+    required this.onTap,
+  });
+}
+
 // ── Score gauge widget ────────────────────────────────────────────────────
 
 class _ScoreGauge extends StatelessWidget {
@@ -1577,10 +1914,7 @@ class _ScoreGauge extends StatelessWidget {
                 padding: EdgeInsets.only(bottom: 3, left: 2),
                 child: Text(
                   '/10',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.neutral500,
-                  ),
+                  style: TextStyle(fontSize: 13, color: AppColors.neutral500),
                 ),
               ),
             ],

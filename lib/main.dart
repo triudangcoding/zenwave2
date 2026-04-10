@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/navigation/tab_navigation_controller.dart';
 import 'core/theme/app_colors.dart';
@@ -9,7 +10,11 @@ import 'sections/meditation/MeditationPage.dart';
 import 'sections/profile/ProfilePage.dart';
 import 'services/app_state_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.clear();
+  AppStateService.bindBleState();
   runApp(const MyApp());
 }
 
@@ -85,8 +90,9 @@ class _MainTabPageState extends State<MainTabPage> {
 
   @override
   void dispose() {
-    TabNavigationController.selectedIndex
-        .removeListener(_handleExternalTabChange);
+    TabNavigationController.selectedIndex.removeListener(
+      _handleExternalTabChange,
+    );
     super.dispose();
   }
 

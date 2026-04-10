@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'ble_service.dart';
+
 /// Simple in-memory global state for the demo app.
 /// No backend / SharedPreferences required.
 class AppStateService {
@@ -21,21 +23,43 @@ class AppStateService {
     isOnboardedNotifier.value = true;
   }
 
-  static final ValueNotifier<bool> isOnboardedNotifier =
-      ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> isOnboardedNotifier = ValueNotifier<bool>(
+    false,
+  );
 
   // ── Device ────────────────────────────────────────────────────────────────
 
   static final ValueNotifier<bool> deviceConnectedNotifier =
       ValueNotifier<bool>(false);
+  static final ValueNotifier<String?> connectedDeviceNameNotifier =
+      ValueNotifier<String?>(null);
+  static final ValueNotifier<bool?> touchDetectedNotifier =
+      ValueNotifier<bool?>(null);
 
   static bool get isDeviceConnected => deviceConnectedNotifier.value;
+  static String? get connectedDeviceName => connectedDeviceNameNotifier.value;
+  static bool? get isTouchDetected => touchDetectedNotifier.value;
+
+  static void bindBleState() {
+    final ble = BleService.instance;
+
+    void sync() {
+      connectedDeviceNameNotifier.value = ble.connectedDeviceNameNotifier.value;
+      deviceConnectedNotifier.value = ble.connectedDeviceNameNotifier.value != null;
+      touchDetectedNotifier.value = ble.touchDetectedNotifier.value;
+    }
+
+    ble.connectedDeviceNameNotifier.addListener(sync);
+    ble.touchDetectedNotifier.addListener(sync);
+    sync();
+  }
 
   // ── EEG Scores ────────────────────────────────────────────────────────────
 
   /// null = no data yet; 1-10 = measured score
-  static final ValueNotifier<int?> stressScoreNotifier =
-      ValueNotifier<int?>(null);
+  static final ValueNotifier<int?> stressScoreNotifier = ValueNotifier<int?>(
+    null,
+  );
 
   static final ValueNotifier<int?> relaxationScoreNotifier =
       ValueNotifier<int?>(null);
@@ -43,14 +67,37 @@ class AppStateService {
   static int? get stressScore => stressScoreNotifier.value;
   static int? get relaxationScore => relaxationScoreNotifier.value;
 
+  // ── Predicted vs EEG flag ─────────────────────────────────────────────────
+
+  /// true = score came from questionnaire prediction; false = EEG headband
+  static final ValueNotifier<bool> isPredictedScoreNotifier =
+      ValueNotifier<bool>(false);
+
+  static bool get isPredictedScore => isPredictedScoreNotifier.value;
+
+  /// Derives approximate stress/relaxation scores from 10 onboarding answers.
+  /// Each answer is 0-based index; option 0 = most stressed, 4 = most relaxed.
+  static void predictScoresFromAnswers(List<int> answers) {
+    if (answers.isEmpty) return;
+    final double avg = answers.fold<int>(0, (a, b) => a + b) / answers.length;
+    // avg range 0.0–4.0 → stress 10→1, relax 1→10
+    final int stress = (10 - (avg / 4.0 * 9)).round().clamp(1, 10);
+    final int relax = (1 + (avg / 4.0 * 9)).round().clamp(1, 10);
+    stressScoreNotifier.value = stress;
+    relaxationScoreNotifier.value = relax;
+    isPredictedScoreNotifier.value = true;
+  }
+
   static void updateScores({required int stress, required int relaxation}) {
     stressScoreNotifier.value = stress;
     relaxationScoreNotifier.value = relaxation;
+    isPredictedScoreNotifier.value = false; // EEG overrides prediction
   }
 
   static void resetScores() {
     stressScoreNotifier.value = null;
     relaxationScoreNotifier.value = null;
+    isPredictedScoreNotifier.value = false;
   }
 
   // ── Recommendation helpers ────────────────────────────────────────────────
