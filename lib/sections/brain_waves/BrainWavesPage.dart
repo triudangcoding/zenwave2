@@ -4,6 +4,9 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../models/breathing_exercise.dart';
+import '../../screens/Breathing/BreathingDetailScreen.dart';
+import '../../sections/meditation/LessonTestMeditation.dart';
 import '../../services/app_state_service.dart';
 import '../../services/ble_service.dart';
 
@@ -1102,6 +1105,12 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
             color: _evalColor,
           ),
         ),
+        const SizedBox(height: 14),
+        _buildPrimaryButton(
+          label: 'Đo lại',
+          icon: Icons.refresh,
+          onPressed: _reset,
+        ),
         const SizedBox(height: 16),
         // Chart snapshot (scrollable)
         _InteractiveWaveChart(
@@ -1221,12 +1230,9 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
             _tensionInsight.isNotEmpty ||
             _copingInsight.isNotEmpty)
           _buildInsightsCard(),
-        const SizedBox(height: 20),
-        _buildPrimaryButton(
-          label: 'Đo lại',
-          icon: Icons.refresh,
-          onPressed: _reset,
-        ),
+        const SizedBox(height: 16),
+        // ── Recommended exercises ──
+        _buildRecommendedExercises(),
         const SizedBox(height: 20),
       ],
     );
@@ -1371,6 +1377,416 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         ],
       ),
     );
+  }
+
+  // ── Recommended exercises based on score ─────────────────────────────────
+
+  Widget _buildRecommendedExercises() {
+    final recs = _getRecommendations();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Breathing section ──
+        _buildRecSectionHeader(
+          icon: Icons.air,
+          title: 'Bài tập thở khuyến nghị',
+          color: const Color(0xFF129EAF),
+        ),
+        const SizedBox(height: 10),
+        ...recs.breathing.map((r) => _buildBreathingRecCard(r)),
+        const SizedBox(height: 20),
+        // ── Meditation section ──
+        _buildRecSectionHeader(
+          icon: Icons.self_improvement,
+          title: 'Bài tập thiền khuyến nghị',
+          color: const Color(0xFF7C4DFF),
+        ),
+        const SizedBox(height: 10),
+        ...recs.meditation.map((r) => _buildMeditationRecCard(r)),
+      ],
+    );
+  }
+
+  Widget _buildRecSectionHeader({
+    required IconData icon,
+    required String title,
+    required Color color,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: color),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBreathingRecCard(_BreathingRec rec) {
+    final exercise = sampleBreathingExercises.firstWhere(
+      (e) => e.id == rec.exerciseId,
+      orElse: () => sampleBreathingExercises.first,
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () {
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => DraggableScrollableSheet(
+                initialChildSize: 0.85,
+                maxChildSize: 0.95,
+                minChildSize: 0.5,
+                builder: (_, controller) => ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                  child: BreathingDetailScreen(exercise: exercise),
+                ),
+              ),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE0F0F0)),
+            ),
+            child: Row(
+              children: [
+                // Icon badge
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: exercise.primaryColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.air,
+                    color: exercise.primaryColor,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        exercise.name,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.neutral800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        exercise.shortPattern,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: exercise.primaryColor,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        rec.reason,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.neutral600,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.chevron_right,
+                  color: AppColors.neutral600,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMeditationRecCard(_MeditationRec rec) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) =>
+                    LessonTestMeditationPage(courseTitle: rec.title),
+              ),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE8E0FF)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF7C4DFF).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    rec.icon,
+                    color: const Color(0xFF7C4DFF),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        rec.title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.neutral800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${rec.lessons} bài · ${rec.duration}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF7C4DFF),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        rec.reason,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.neutral600,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.chevron_right,
+                  color: AppColors.neutral600,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  _Recommendations _getRecommendations() {
+    if (_overallScore >= 7.5) {
+      // Relaxed — maintain and deepen
+      return _Recommendations(
+        breathing: [
+          _BreathingRec(
+            exerciseId: 'breathing_555',
+            reason:
+                'Bạn đang ở trạng thái thư giãn tốt. Thở 5-5-5 giúp duy trì '
+                'sự cân bằng Alpha hiện tại và đào sâu trạng thái thiền định.',
+          ),
+          _BreathingRec(
+            exerciseId: 'breathing_relaxation',
+            reason:
+                'Bài thở thư giãn 4-5-6 phù hợp để kéo dài trạng thái bình '
+                'tĩnh, tăng cường sóng Alpha trước giờ ngủ.',
+          ),
+        ],
+        meditation: [
+          _MeditationRec(
+            title: 'Thiền Hít Thở Sâu & Thư Giãn',
+            icon: Icons.spa,
+            lessons: 10,
+            duration: '~5-10 phút/bài',
+            reason:
+                'Sóng Alpha ổn định cho thấy bạn sẵn sàng đào sâu thiền định. '
+                'Khóa này giúp bạn tận dụng trạng thái thư giãn để đạt '
+                'mức thiền sâu hơn.',
+          ),
+          _MeditationRec(
+            title: 'Thiền Buổi Sáng',
+            icon: Icons.wb_sunny_outlined,
+            lessons: 10,
+            duration: '~5-10 phút/bài',
+            reason:
+                'Duy trì sóng Alpha từ sáng sớm giúp bạn giữ trạng thái '
+                'bình tĩnh và sáng tạo suốt cả ngày.',
+          ),
+        ],
+      );
+    } else if (_overallScore >= 6.0) {
+      // Mild stress — calming focus
+      return _Recommendations(
+        breathing: [
+          _BreathingRec(
+            exerciseId: 'breathing_box',
+            reason:
+                'Sóng Beta tăng nhẹ cho thấy căng thẳng nhẹ. Thở hộp (Box Breathing) '
+                'kích hoạt hệ thần kinh đối giao cảm, giúp hạ Beta và tăng Alpha '
+                'hiệu quả trong 4-5 phút.',
+          ),
+          _BreathingRec(
+            exerciseId: 'breathing_focus',
+            reason:
+                'Bài thở tập trung 3-5-3 giúp ổn định sóng não khi bạn cần '
+                'duy trì tập trung mà không gia tăng căng thẳng.',
+          ),
+        ],
+        meditation: [
+          _MeditationRec(
+            title: 'Thiền Cân Bằng Cảm Xúc',
+            icon: Icons.balance,
+            lessons: 10,
+            duration: '~5-10 phút/bài',
+            reason:
+                'Mức Beta nhẹ thường đi kèm cảm xúc dao động. Khóa thiền này '
+                'giúp nhận diện và cân bằng cảm xúc, giảm hoạt động Beta thừa.',
+          ),
+          _MeditationRec(
+            title: 'Ổn Định Tâm Trí (Tập trung)',
+            icon: Icons.center_focus_strong,
+            lessons: 10,
+            duration: '~5-10 phút/bài',
+            reason:
+                'Tăng cường khả năng tập trung có chủ đích giúp chuyển từ '
+                'Beta căng thẳng sang Beta tập trung lành mạnh.',
+          ),
+        ],
+      );
+    } else if (_overallScore >= 4.0) {
+      // Moderate stress — active de-stress
+      return _Recommendations(
+        breathing: [
+          _BreathingRec(
+            exerciseId: 'breathing_478',
+            reason:
+                'Chỉ số Beta cao liên tục. Kỹ thuật 4-7-8 của Dr. Weil '
+                'kích hoạt phản xạ thư giãn mạnh, giảm nhanh hoạt động Beta '
+                'và ức chế phản ứng stress.',
+          ),
+          _BreathingRec(
+            exerciseId: 'breathing_box',
+            reason:
+                'Box Breathing được quân đội Mỹ sử dụng trong áp lực cao. '
+                'Phù hợp để hạ nhanh mức căng thẳng trung bình của bạn.',
+          ),
+        ],
+        meditation: [
+          _MeditationRec(
+            title: 'Thiền Giảm Căng Thẳng',
+            icon: Icons.healing,
+            lessons: 10,
+            duration: '~5-10 phút/bài',
+            reason:
+                'Với mức Beta cao, bạn cần thiền chuyên biệt giảm stress. '
+                'Khóa này dùng kỹ thuật quét cơ thể và thả lỏng để '
+                'giảm hoạt động Beta và phục hồi Alpha.',
+          ),
+          _MeditationRec(
+            title: 'Thiền Quét Toàn Thân (Body Scan)',
+            icon: Icons.accessibility_new,
+            lessons: 10,
+            duration: '~5-10 phút/bài',
+            reason:
+                'Body Scan giúp nhận diện các điểm căng cứng cơ thể — '
+                'mối liên hệ trực tiếp với sóng Beta cao. '
+                'Thả lỏng từng nhóm cơ giúp não chuyển sang Alpha.',
+          ),
+        ],
+      );
+    } else {
+      // High stress — urgent relaxation
+      return _Recommendations(
+        breathing: [
+          _BreathingRec(
+            exerciseId: 'breathing_478',
+            reason:
+                'Mức căng thẳng cao — kỹ thuật 4-7-8 là ưu tiên hàng đầu. '
+                'Thời gian giữ hơi dài (7s) và thở ra chậm (8s) kích hoạt '
+                'mạnh hệ phó giao cảm, giúp hạ Beta nhanh chóng.',
+          ),
+          _BreathingRec(
+            exerciseId: 'breathing_relaxation',
+            reason:
+                'Sau bài 4-7-8, thở thư giãn 4-5-6 giúp duy trì trạng thái '
+                'bình tĩnh và ngăn Beta tăng trở lại.',
+          ),
+        ],
+        meditation: [
+          _MeditationRec(
+            title: 'Thiền Giảm Căng Thẳng',
+            icon: Icons.healing,
+            lessons: 10,
+            duration: '~5-10 phút/bài',
+            reason:
+                'Với mức Beta rất cao, bạn cần thiền chuyên sâu giảm stress. '
+                'Khóa này sử dụng kỹ thuật mindfulness kết hợp hít thở có '
+                'chủ đích để phục hồi sóng Alpha bị ức chế.',
+          ),
+          _MeditationRec(
+            title: 'Thiền Đi Bộ Nhẹ Nhàng',
+            icon: Icons.directions_walk,
+            lessons: 10,
+            duration: '~5-10 phút/bài',
+            reason:
+                'Khi căng thẳng cao, ngồi yên có thể khó khăn. Thiền đi bộ '
+                'là phương pháp nhẹ nhàng hơn, giúp giải phóng năng lượng '
+                'Beta thừa trong khi vẫn rèn luyện chánh niệm.',
+          ),
+          _MeditationRec(
+            title: 'Thiền Quét Toàn Thân (Body Scan)',
+            icon: Icons.accessibility_new,
+            lessons: 10,
+            duration: '~5-10 phút/bài',
+            reason:
+                'Căng thẳng cao thường tích tụ ở cơ thể. Body Scan giúp '
+                'nhận diện và thả lỏng từng điểm căng cứng, '
+                'trực tiếp hạ hoạt động Beta.',
+          ),
+        ],
+      );
+    }
   }
 
   Widget _buildLegend() {
@@ -2115,6 +2531,35 @@ class _InsightItem {
   final IconData icon;
   final String title;
   final String text;
+}
+
+// ── Recommendation data models ────────────────────────────────────────────
+
+class _BreathingRec {
+  const _BreathingRec({required this.exerciseId, required this.reason});
+  final String exerciseId;
+  final String reason;
+}
+
+class _MeditationRec {
+  const _MeditationRec({
+    required this.title,
+    required this.icon,
+    required this.lessons,
+    required this.duration,
+    required this.reason,
+  });
+  final String title;
+  final IconData icon;
+  final int lessons;
+  final String duration;
+  final String reason;
+}
+
+class _Recommendations {
+  const _Recommendations({required this.breathing, required this.meditation});
+  final List<_BreathingRec> breathing;
+  final List<_MeditationRec> meditation;
 }
 
 // ── Stress zone data ──────────────────────────────────────────────────────
