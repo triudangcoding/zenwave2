@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:yc_product_plugin/yc_product_plugin.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../models/breathing_exercise.dart';
@@ -10,6 +11,8 @@ import '../../screens/Breathing/BreathingDetailScreen.dart';
 import '../../sections/meditation/DetailLessonMeditation.dart';
 import '../../services/app_state_service.dart';
 import '../../services/ble_service.dart';
+import '../../services/smart_ring/smart_ring_connection_service.dart';
+import '../../services/smart_ring/smart_ring_measure_service.dart';
 
 class BrainWavesPage extends StatefulWidget {
   const BrainWavesPage({super.key});
@@ -19,12 +22,25 @@ class BrainWavesPage extends StatefulWidget {
 }
 
 class _BrainWavesPageState extends State<BrainWavesPage> {
+  final SmartRingConnectionService _smartRingConnectionService =
+      SmartRingConnectionService.instance;
+
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: AppStateService.deviceConnectedNotifier,
-      builder: (_, connected, __) {
-        if (connected) {
+    return AnimatedBuilder(
+      animation: Listenable.merge(<Listenable>[
+        AppStateService.deviceConnectedNotifier,
+        _smartRingConnectionService.bluetoothStateNotifier,
+        _smartRingConnectionService.connectedDeviceNotifier,
+      ]),
+      builder: (_, __) {
+        final bool espReady = AppStateService.deviceConnectedNotifier.value;
+        final bool ringReady =
+            _smartRingConnectionService.connectedDeviceNotifier.value != null &&
+            _smartRingConnectionService.bluetoothStateNotifier.value ==
+                BluetoothState.connected;
+
+        if (espReady && ringReady) {
           return const _BrainMeasurementView();
         }
         return const _BleConnectView();
@@ -46,263 +62,646 @@ class _BleConnectView extends StatefulWidget {
 
 class _BleConnectViewState extends State<_BleConnectView> {
   final BleService _ble = BleService.instance;
-  bool _isConnecting = false;
-  String? _error;
+  final SmartRingConnectionService _smartRingConnectionService =
+      SmartRingConnectionService.instance;
+  bool _isConnectingEsp = false;
+  String? _espError;
+  String? _ringError;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_smartRingConnectionService.initialize());
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: Column(
-            children: [
-              const SizedBox(height: 24),
-              // Header
-              const Text(
-                'Sóng não',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.neutral900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Kết nối thiết bị ESP32 BLE\nđể bắt đầu đo sóng não',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: AppColors.neutral600,
-                  height: 1.5,
-                ),
-              ),
-              const Spacer(flex: 2),
-              // Circle icon
-              Container(
-                width: 180,
-                height: 180,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFA7F0F1), width: 5),
-                ),
-                child: Center(
-                  child: Container(
-                    width: 130,
-                    height: 130,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Color(0xFF00B3BF),
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.bluetooth_searching,
-                        color: Colors.white,
-                        size: 52,
-                      ),
+        child: AnimatedBuilder(
+          animation: Listenable.merge(<Listenable>[
+            AppStateService.deviceConnectedNotifier,
+            AppStateService.connectedDeviceNameNotifier,
+            _ble.isScanningNotifier,
+            _ble.scanResultsNotifier,
+            _smartRingConnectionService.isScanningNotifier,
+            _smartRingConnectionService.isConnectingNotifier,
+            _smartRingConnectionService.bluetoothStateNotifier,
+            _smartRingConnectionService.scanResultsNotifier,
+            _smartRingConnectionService.connectedDeviceNotifier,
+          ]),
+          builder: (_, __) {
+            final bool espReady = AppStateService.deviceConnectedNotifier.value;
+            final bool ringReady = _isSmartRingReady;
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+              child: Column(
+                children: [
+                  const Text(
+                    'Sóng não',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.neutral900,
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 32),
-              // Status text
-              Text(
-                _isConnecting ? 'Đang tìm thiết bị...' : 'CHƯA KẾT NỐI',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
-                  color: _isConnecting
-                      ? AppColors.orange600
-                      : const Color(0xFF4F9A67),
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    _error!,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: AppColors.red600,
-                    ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Chuẩn bị đủ 2 thiết bị BLE trước khi bắt đầu phiên đo kết hợp.',
                     textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: AppColors.neutral600,
+                      height: 1.5,
+                    ),
                   ),
-                ),
-              const Text(
-                'Hãy bật Bluetooth và đảm bảo thiết bị\nESP32 đang hoạt động gần bạn.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.neutral600,
-                  height: 1.5,
-                ),
+                  const SizedBox(height: 20),
+                  IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: _buildEspSection(espReady)),
+                        const SizedBox(width: 12),
+                        Expanded(child: _buildSmartRingSection(ringReady)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: espReady && ringReady
+                          ? const Color(0xFFE8F5E9)
+                          : AppColors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: espReady && ringReady
+                            ? const Color(0xFFA5D6A7)
+                            : const Color(0xFFEAEAEA),
+                      ),
+                    ),
+                    child: Text(
+                      espReady && ringReady
+                          ? 'ESP32 và Smart Ring đã sẵn sàng. Màn hình đo sẽ mở tự động.'
+                          : 'Cần cả ESP32 và Smart Ring ở trạng thái sẵn sàng trước khi bắt đầu đo.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: espReady && ringReady
+                            ? const Color(0xFF2E7D32)
+                            : AppColors.neutral700,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const Spacer(flex: 2),
-              // Scan results
-              ValueListenableBuilder<List<BleDeviceInfo>>(
-                valueListenable: _ble.scanResultsNotifier,
-                builder: (_, devices, __) {
-                  if (devices.isEmpty) return const SizedBox.shrink();
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Thiết bị tìm thấy:',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.neutral700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ...devices.map(
-                        (d) => _DeviceTile(
-                          device: d,
-                          onTap: () => _connectDevice(d),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                  );
-                },
-              ),
-              // Scan button
-              SizedBox(
-                width: double.infinity,
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: _ble.isScanningNotifier,
-                  builder: (_, scanning, __) {
-                    return ElevatedButton.icon(
-                      onPressed: scanning || _isConnecting ? null : _startScan,
-                      icon: scanning
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.bluetooth_searching),
-                      label: Text(
-                        scanning ? 'Đang quét...' : 'Quét thiết bị BLE',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF129EAF),
-                        foregroundColor: AppColors.white,
-                        minimumSize: const Size.fromHeight(54),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        elevation: 0,
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
   }
 
+  Widget _buildEspSection(bool ready) {
+    final List<BleDeviceInfo> devices = _ble.scanResultsNotifier.value;
+    final bool scanning = _ble.isScanningNotifier.value;
+    final String deviceName =
+        AppStateService.connectedDeviceNameNotifier.value ?? 'ESP32S3_TOUCH';
+
+    return _ConnectionSectionCard(
+      title: 'ESP32',
+      subtitle: 'Thiết bị đo sóng não',
+      accent: const Color(0xFF129EAF),
+      icon: Icons.memory_rounded,
+      ready: ready,
+      statusLabel: ready
+          ? 'Sẵn sàng'
+          : (scanning || _isConnectingEsp ? 'Đang kết nối' : 'Chưa kết nối'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _ConnectionStatusLine(
+            label: ready ? deviceName : 'Chưa có thiết bị ESP32',
+            value: ready ? 'Đã kết nối' : 'Cần scan để kết nối',
+            ok: ready,
+          ),
+          const SizedBox(height: 8),
+          SizedBox(height: 18, child: _SectionMessageSlot(message: _espError)),
+          const SizedBox(height: 12),
+          if (ready)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _disconnectEsp,
+                icon: const Icon(Icons.link_off_rounded),
+                label: const Text('Ngắt kết nối'),
+              ),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: scanning || _isConnectingEsp ? null : _startScan,
+                icon: scanning
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.bluetooth_searching),
+                label: Text(scanning ? 'Đang quét...' : 'Quét ESP32'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF129EAF),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(46),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 96),
+            child: _SectionDeviceListSlot(
+              children: !ready && devices.isNotEmpty
+                  ? devices
+                        .take(2)
+                        .map(
+                          (BleDeviceInfo device) => _CompactBleDeviceTile(
+                            title: device.name,
+                            subtitle: device.rssi != null
+                                ? '${device.rssi} dBm'
+                                : 'ESP32 BLE',
+                            actionLabel: 'Kết nối',
+                            onTap: () => _connectEspDevice(device),
+                          ),
+                        )
+                        .toList()
+                  : <Widget>[
+                      _SectionHintCard(
+                        text: ready
+                            ? 'ESP32 đã sẵn sàng cho phiên đo sóng não.'
+                            : 'Bấm quét để tìm headband ESP32 gần bạn.',
+                      ),
+                    ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSmartRingSection(bool ready) {
+    final List<BluetoothDevice> devices =
+        _smartRingConnectionService.scanResultsNotifier.value;
+    final bool scanning = _smartRingConnectionService.isScanningNotifier.value;
+    final bool connecting =
+        _smartRingConnectionService.isConnectingNotifier.value;
+    final BluetoothDevice? connectedDevice =
+        _smartRingConnectionService.connectedDeviceNotifier.value;
+
+    return _ConnectionSectionCard(
+      title: 'Smart Ring',
+      subtitle: 'Thiết bị đo 3 chỉ số',
+      accent: const Color(0xFF18ADC3),
+      icon: Icons.health_and_safety_rounded,
+      ready: ready,
+      statusLabel: ready
+          ? 'Sẵn sàng'
+          : (scanning || connecting ? 'Đang kết nối' : 'Chưa kết nối'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _ConnectionStatusLine(
+            label: ready
+                ? (connectedDevice?.name ?? 'Smart Ring')
+                : 'Chưa có thiết bị Smart Ring',
+            value: ready ? 'Đã kết nối' : 'Cần scan để kết nối',
+            ok: ready,
+          ),
+          const SizedBox(height: 8),
+          SizedBox(height: 18, child: _SectionMessageSlot(message: _ringError)),
+          const SizedBox(height: 12),
+          if (ready)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _disconnectSmartRing,
+                icon: const Icon(Icons.link_off_rounded),
+                label: const Text('Ngắt kết nối'),
+              ),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: scanning || connecting ? null : _startSmartRingScan,
+                icon: scanning
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.health_and_safety_outlined),
+                label: Text(scanning ? 'Đang quét...' : 'Quét Smart Ring'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF18ADC3),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(46),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 96),
+            child: _SectionDeviceListSlot(
+              children: !ready && devices.isNotEmpty
+                  ? devices
+                        .take(2)
+                        .map(
+                          (BluetoothDevice device) => _CompactBleDeviceTile(
+                            title: device.name,
+                            subtitle: device.deviceBunId.isEmpty
+                                ? 'Smart Ring'
+                                : device.deviceBunId,
+                            actionLabel: 'Kết nối',
+                            onTap: () => _connectRingDevice(device),
+                          ),
+                        )
+                        .toList()
+                  : <Widget>[
+                      _SectionHintCard(
+                        text: ready
+                            ? 'Smart Ring đã sẵn sàng cho phép đo 3 chỉ số.'
+                            : 'Bấm quét để tìm Smart Ring gần bạn.',
+                      ),
+                    ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _disconnectEsp() async {
+    await _ble.disconnect();
+  }
+
+  Future<void> _disconnectSmartRing() async {
+    await _smartRingConnectionService.disconnectDevice();
+  }
+
+  bool get _isSmartRingReady =>
+      _smartRingConnectionService.connectedDeviceNotifier.value != null &&
+      _smartRingConnectionService.bluetoothStateNotifier.value ==
+          BluetoothState.connected;
+
+  Future<void> _startSmartRingScan() async {
+    setState(() {
+      _ringError = null;
+    });
+    try {
+      await _smartRingConnectionService.startScan();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _ringError = 'Không thể quét: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _connectRingDevice(BluetoothDevice device) async {
+    setState(() {
+      _ringError = null;
+    });
+    try {
+      await _smartRingConnectionService.connectDevice(device);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _ringError = 'Kết nối thất bại: $e';
+        });
+      }
+    }
+  }
+
   Future<void> _startScan() async {
     setState(() {
-      _error = null;
+      _espError = null;
     });
     try {
       await _ble.startScan();
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Không thể quét: $e';
+          _espError = 'Không thể quét: $e';
         });
       }
     }
   }
 
-  Future<void> _connectDevice(BleDeviceInfo device) async {
+  Future<void> _connectEspDevice(BleDeviceInfo device) async {
     setState(() {
-      _isConnecting = true;
-      _error = null;
+      _isConnectingEsp = true;
+      _espError = null;
     });
     try {
       await _ble.connect(device);
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Kết nối thất bại: $e';
+          _espError = 'Kết nối thất bại: $e';
         });
       }
     } finally {
       if (mounted) {
         setState(() {
-          _isConnecting = false;
+          _isConnectingEsp = false;
         });
       }
     }
   }
 }
 
-class _DeviceTile extends StatelessWidget {
-  const _DeviceTile({required this.device, required this.onTap});
+class _ConnectionSectionCard extends StatelessWidget {
+  const _ConnectionSectionCard({
+    required this.title,
+    required this.subtitle,
+    required this.accent,
+    required this.icon,
+    required this.ready,
+    required this.statusLabel,
+    required this.child,
+  });
 
-  final BleDeviceInfo device;
+  final String title;
+  final String subtitle;
+  final Color accent;
+  final IconData icon;
+  final bool ready;
+  final String statusLabel;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: ready
+              ? accent.withValues(alpha: 0.35)
+              : const Color(0xFFEAEAEA),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: accent, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.neutral900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: AppColors.neutral600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: ready ? const Color(0xFFE8F5E9) : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              statusLabel,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: ready ? const Color(0xFF2E7D32) : AppColors.neutral700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionMessageSlot extends StatelessWidget {
+  const _SectionMessageSlot({required this.message});
+
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    if (message == null || message!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        message!,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 12, color: AppColors.red600),
+      ),
+    );
+  }
+}
+
+class _SectionDeviceListSlot extends StatelessWidget {
+  const _SectionDeviceListSlot({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: children);
+  }
+}
+
+class _SectionHintCard extends StatelessWidget {
+  const _SectionHintCard({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: AppColors.neutral600,
+          height: 1.35,
+        ),
+      ),
+    );
+  }
+}
+
+class _ConnectionStatusLine extends StatelessWidget {
+  const _ConnectionStatusLine({
+    required this.label,
+    required this.value,
+    required this.ok,
+  });
+
+  final String label;
+  final String value;
+  final bool ok;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: AppColors.neutral800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: ok ? const Color(0xFF2E7D32) : AppColors.neutral600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactBleDeviceTile extends StatelessWidget {
+  const _CompactBleDeviceTile({
+    required this.title,
+    required this.subtitle,
+    required this.actionLabel,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final String actionLabel;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Material(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            child: Row(
-              children: [
-                const Icon(Icons.bluetooth, color: Color(0xFF129EAF), size: 22),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    device.name,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.neutral800,
-                    ),
-                  ),
-                ),
-                if (device.rssi != null)
-                  Text(
-                    '${device.rssi} dBm',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.neutral500,
-                    ),
-                  ),
-                const SizedBox(width: 8),
-                const Icon(
-                  Icons.arrow_forward_ios,
-                  size: 14,
-                  color: AppColors.neutral400,
-                ),
-              ],
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.neutral800,
             ),
           ),
-        ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11.5, color: AppColors.neutral600),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: onTap,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(36),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+              ),
+              child: Text(
+                actionLabel,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -322,10 +721,16 @@ class _BrainMeasurementView extends StatefulWidget {
 }
 
 class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
+  final SmartRingConnectionService _smartRingConnectionService =
+      SmartRingConnectionService.instance;
+  final SmartRingMeasureService _smartRingMeasureService =
+      SmartRingMeasureService.instance;
+
   _MeasurePhase _phase = _MeasurePhase.idle;
   Timer? _phaseTimer;
   Timer? _chartTimer;
   Timer? _signalResumeTimer;
+  bool _isStartingCombined = false;
 
   // ── Wearing detection ──
   bool _headbandRemovedHandled = false;
@@ -472,6 +877,70 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
             ),
             duration: Duration(seconds: 4),
             behavior: SnackBarBehavior.floating,
+          ),
+        );
+    }
+  }
+
+  Future<void> _startCombinedFlow() async {
+    if (_isStartingCombined || _phase != _MeasurePhase.idle) {
+      return;
+    }
+
+    final bool espReady = AppStateService.deviceConnectedNotifier.value;
+    final bool ringReady =
+        _smartRingConnectionService.connectedDeviceNotifier.value != null &&
+        _smartRingConnectionService.bluetoothStateNotifier.value ==
+            BluetoothState.connected;
+
+    if (!espReady || !ringReady) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Cần kết nối đầy đủ ESP32 và Smart Ring trước khi bắt đầu đo.',
+              ),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+      }
+      return;
+    }
+
+    setState(() {
+      _isStartingCombined = true;
+    });
+
+    try {
+      _startFlow();
+      unawaited(_runSmartRingMeasurement());
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isStartingCombined = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _runSmartRingMeasurement() async {
+    try {
+      await _smartRingMeasureService.runCombinedMeasurementSequence();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _reset();
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text('Smart Ring đo thất bại: $error'),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
           ),
         );
     }
@@ -781,6 +1250,9 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   Widget build(BuildContext context) {
     final String deviceName =
         AppStateService.connectedDeviceName ?? 'ESP32S3_TOUCH';
+    final String ringName =
+        _smartRingConnectionService.connectedDeviceNotifier.value?.name ??
+        'Smart Ring';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
@@ -803,8 +1275,8 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                 ),
               ),
               const SizedBox(height: 16),
-              // ── Device card ──
-              _buildDeviceCard(deviceName),
+              // ── Connected devices ──
+              _buildDeviceCards(deviceName: deviceName, ringName: ringName),
               const SizedBox(height: 12),
               // ── Wearing status ──
               if (AppStateService.isWearingDetectionEnabled)
@@ -861,83 +1333,184 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
 
   // ── Device card ──────────────────────────────────────────────────────────
 
-  Widget _buildDeviceCard(String deviceName) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFEAEAEA)),
-      ),
+  Widget _buildDeviceCards({
+    required String deviceName,
+    required String ringName,
+  }) {
+    final bool disableDisconnect = _phase == _MeasurePhase.measuring;
+
+    return IntrinsicHeight(
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0xFFE0F7F7),
-            ),
-            child: const Icon(
-              Icons.bluetooth_connected,
-              color: Color(0xFF129EAF),
-              size: 22,
+          Expanded(
+            child: _buildReadyDeviceCard(
+              title: 'ESP32',
+              name: deviceName,
+              accent: const Color(0xFF129EAF),
+              icon: Icons.memory_rounded,
+              actionLabel: 'Ngắt kết nối',
+              onDisconnect: disableDisconnect
+                  ? null
+                  : () async {
+                      _reset();
+                      await BleService.instance.disconnect();
+                    },
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  deviceName,
+            child: _buildReadyDeviceCard(
+              title: 'Smart Ring',
+              name: ringName,
+              accent: const Color(0xFF18ADC3),
+              icon: Icons.health_and_safety_rounded,
+              actionLabel: 'Ngắt kết nối',
+              onDisconnect: disableDisconnect
+                  ? null
+                  : () async {
+                      _reset();
+                      await _smartRingConnectionService.disconnectDevice();
+                    },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadyDeviceCard({
+    required String title,
+    required String name,
+    required Color accent,
+    required IconData icon,
+    required String actionLabel,
+    required Future<void> Function()? onDisconnect,
+  }) {
+    return Container(
+      height: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFEAEAEA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: accent.withValues(alpha: 0.12),
+                ),
+                child: Icon(icon, color: accent, size: 20),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
                   style: const TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.neutral800,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.neutral900,
                   ),
                 ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFF4F9A67),
-                      ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Thiết bị đã kết nối',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: accent,
+            ),
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 40,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.neutral800,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF8F1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFD4EED9)),
+            ),
+            child: const Row(
+              children: [
+                Icon(
+                  Icons.check_circle_rounded,
+                  size: 16,
+                  color: Color(0xFF4F9A67),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Sẵn sàng cho phiên đo kết hợp',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF2E7D32),
+                      fontWeight: FontWeight.w600,
+                      height: 1.3,
                     ),
-                    const SizedBox(width: 5),
-                    const Text(
-                      'Đã kết nối',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF4F9A67),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
           ),
-          TextButton(
-            onPressed: _phase == _MeasurePhase.measuring
-                ? null
-                : () async {
-                    _reset();
-                    await BleService.instance.disconnect();
-                  },
-            child: Text(
-              'Ngắt kết nối',
-              style: TextStyle(
-                fontSize: 12,
-                color: _phase == _MeasurePhase.measuring
-                    ? AppColors.neutral400
-                    : AppColors.red600,
-                fontWeight: FontWeight.w600,
+          const Spacer(),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: onDisconnect == null
+                  ? null
+                  : () async {
+                      await onDisconnect();
+                    },
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(44),
+                side: BorderSide(
+                  color: onDisconnect == null
+                      ? const Color(0xFFE5E7EB)
+                      : const Color(0xFFF2C9CE),
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                actionLabel,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: onDisconnect == null
+                      ? AppColors.neutral400
+                      : AppColors.red600,
+                ),
               ),
             ),
           ),
@@ -983,7 +1556,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         ),
         const SizedBox(height: 10),
         const Text(
-          'Thiết bị đã được kết nối thành công.\nBấm nút bên dưới để bắt đầu quá trình đo.',
+          'ESP32 và Smart Ring đã sẵn sàng.\nBấm nút bên dưới để bắt đầu đo đồng thời.',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 14,
@@ -993,9 +1566,11 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         ),
         const SizedBox(height: 36),
         _buildPrimaryButton(
-          label: 'Đo sóng não',
+          label: 'Bắt đầu đo',
           icon: Icons.waves,
-          onPressed: _isWearing ? _startFlow : null,
+          onPressed: _isWearing && !_isStartingCombined
+              ? _startCombinedFlow
+              : null,
         ),
         if (!_isWearing && AppStateService.isWearingDetectionEnabled)
           const Padding(

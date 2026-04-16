@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:yc_product_plugin/yc_product_plugin.dart';
 
@@ -543,30 +541,47 @@ class _SmartRingPageState extends State<SmartRingPage> {
       return _errorMessage!;
     }
     if (_activeMetric != null) {
-      return _metricVisuals[_activeMetric]!.subtitle;
+      return 'Giữ tay yên trong vài giây để tín hiệu ổn định hơn.';
     }
-    return 'Một lần chạm sẽ lần lượt đo nhịp tim, SpO2 và huyết áp ngay trong Zenwave.';
+    if (_isSequenceCompleted) {
+      return 'Đã có đủ 3 chỉ số, bạn có thể đo lại bất kỳ lúc nào.';
+    }
+    return 'Một lần chạm để lấy đủ nhịp tim, SpO2 và huyết áp.';
   }
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: _surface,
-      child: RefreshIndicator(
-        color: _primary,
-        onRefresh: _connectionService.refreshConnectionState,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              _buildHeader(),
-              const SizedBox(height: 16),
-              _buildConnectionCard(),
-              const SizedBox(height: 16),
-              _buildHealthCheckCard(),
-            ],
+    final bool hasActiveConnection =
+        _connectedDevice != null && _isDeviceConnected;
+
+    return Scaffold(
+      backgroundColor: _surface,
+      bottomNavigationBar: hasActiveConnection ? _buildStickyActionBar() : null,
+      body: ColoredBox(
+        color: _surface,
+        child: RefreshIndicator(
+          color: _primary,
+          onRefresh: _connectionService.refreshConnectionState,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              16,
+              16,
+              hasActiveConnection ? 132 : 28,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                _buildHeader(),
+                const SizedBox(height: 16),
+                _buildConnectionCard(),
+                if (hasActiveConnection) ...<Widget>[
+                  const SizedBox(height: 16),
+                  _buildHealthCheckCard(),
+                ],
+              ],
+            ),
           ),
         ),
       ),
@@ -647,6 +662,8 @@ class _SmartRingPageState extends State<SmartRingPage> {
 
   Widget _buildConnectionCard() {
     final bool bluetoothOff = _bluetoothState == BluetoothState.off;
+    final bool hasActiveConnection =
+        _connectedDevice != null && _isDeviceConnected;
 
     return Container(
       width: double.infinity,
@@ -707,79 +724,76 @@ class _SmartRingPageState extends State<SmartRingPage> {
             ],
           ),
           const SizedBox(height: 16),
-          if (_connectedDevice != null) _buildConnectedDeviceCard(),
-          if (_connectedDevice == null && bluetoothOff)
-            _buildBluetoothOffHint(),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: _isInitializing || _isScanning || _isConnecting
-                      ? null
-                      : _startScan,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  icon: _isScanning
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.search_rounded),
-                  label: Text(_isScanning ? 'Đang quét...' : 'Quét thiết bị'),
-                ),
-              ),
-              if (_connectedDevice != null) ...<Widget>[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _isConnecting || _isScanning
-                        ? null
-                        : _disconnectDevice,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      side: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                    icon: const Icon(Icons.link_off_rounded),
-                    label: const Text('Ngắt kết nối'),
-                  ),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 14),
-          if (_scanResults.isNotEmpty) _buildScanResultsList(),
-          if (_scanResults.isEmpty && !_isScanning && _connectedDevice == null)
-            Container(
+          if (hasActiveConnection) ...<Widget>[
+            _buildConnectedDeviceCard(),
+            SizedBox(
               width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: const Text(
-                'Nhấn "Quét thiết bị" để tìm Smart Ring ở gần. Nếu nhẫn chưa xuất hiện, hãy kiểm tra pin và đảm bảo thiết bị đang ở trạng thái sẵn sàng kết nối.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF64748B),
-                  fontWeight: FontWeight.w500,
-                  height: 1.45,
+              child: OutlinedButton.icon(
+                onPressed: _isConnecting || _isScanning
+                    ? null
+                    : _disconnectDevice,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  side: const BorderSide(color: Color(0xFFE2E8F0)),
                 ),
+                icon: const Icon(Icons.link_off_rounded),
+                label: const Text('Ngắt kết nối'),
               ),
             ),
+          ] else ...<Widget>[
+            if (bluetoothOff) _buildBluetoothOffHint(),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _isInitializing || _isScanning || _isConnecting
+                    ? null
+                    : _startScan,
+                style: FilledButton.styleFrom(
+                  backgroundColor: _primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                icon: _isScanning
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.search_rounded),
+                label: Text(_isScanning ? 'Đang quét...' : 'Quét thiết bị'),
+              ),
+            ),
+            const SizedBox(height: 14),
+            if (_scanResults.isNotEmpty) _buildScanResultsList(),
+            if (_scanResults.isEmpty && !_isScanning)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: const Text(
+                  'Nhấn "Quét thiết bị" để tìm Smart Ring ở gần. Nếu nhẫn chưa xuất hiện, hãy kiểm tra pin và đảm bảo thiết bị đang ở trạng thái sẵn sàng kết nối.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                    height: 1.45,
+                  ),
+                ),
+              ),
+          ],
         ],
       ),
     );
@@ -961,99 +975,77 @@ class _SmartRingPageState extends State<SmartRingPage> {
   }
 
   Widget _buildHealthCheckCard() {
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 220),
-      opacity: _connectedDevice != null ? 1 : 0.72,
-      child: Container(
-        width: double.infinity,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: <Color>[
-              Color(0xFFFCFEFF),
-              Color(0xFFF2FBFD),
-              Color(0xFFFFFFFF),
-            ],
-          ),
-          border: Border.all(color: _surfaceBorder),
-          boxShadow: <BoxShadow>[
-            BoxShadow(
-              color: _primary.withValues(alpha: 0.12),
-              blurRadius: 30,
-              offset: const Offset(0, 18),
-              spreadRadius: -18,
-            ),
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            Color(0xFFFCFEFF),
+            Color(0xFFF2FBFD),
+            Color(0xFFFFFFFF),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: Stack(
-            children: <Widget>[
-              Positioned(
-                top: -40,
-                right: -20,
-                child: Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _primary.withValues(alpha: 0.08),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: -56,
-                left: -20,
-                child: Container(
-                  width: 140,
-                  height: 140,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _surfaceAlt.withValues(alpha: 0.7),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    _buildHeroSection(),
-                    const SizedBox(height: 18),
-                    _buildGuidanceCard(),
-                    if (_errorMessage != null) ...<Widget>[
-                      const SizedBox(height: 14),
-                      _buildErrorCard(),
-                    ],
-                    const SizedBox(height: 16),
-                    _buildMetricCard(_HealthCheckMetric.heartRate),
-                    const SizedBox(height: 12),
-                    _buildMetricCard(_HealthCheckMetric.spo2),
-                    const SizedBox(height: 12),
-                    _buildMetricCard(_HealthCheckMetric.bloodPressure),
-                    const SizedBox(height: 16),
-                    _buildPrimaryAction(),
-                  ],
-                ),
-              ),
-              if (_connectedDevice == null)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(28),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
-                        child: Container(
-                          color: Colors.white.withValues(alpha: 0.18),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
+        border: Border.all(color: _surfaceBorder),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: _primary.withValues(alpha: 0.12),
+            blurRadius: 30,
+            offset: const Offset(0, 18),
+            spreadRadius: -18,
           ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: Stack(
+          children: <Widget>[
+            Positioned(
+              top: -40,
+              right: -20,
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _primary.withValues(alpha: 0.08),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: -56,
+              left: -20,
+              child: Container(
+                width: 140,
+                height: 140,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _surfaceAlt.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  _buildHeroSection(),
+                  if (_errorMessage != null) ...<Widget>[
+                    const SizedBox(height: 16),
+                    _buildErrorCard(),
+                  ],
+                  const SizedBox(height: 16),
+                  _buildMetricCard(_HealthCheckMetric.heartRate),
+                  const SizedBox(height: 12),
+                  _buildMetricCard(_HealthCheckMetric.spo2),
+                  const SizedBox(height: 12),
+                  _buildMetricCard(_HealthCheckMetric.bloodPressure),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1072,8 +1064,8 @@ class _SmartRingPageState extends State<SmartRingPage> {
                 children: <Widget>[
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
+                      horizontal: 10,
+                      vertical: 7,
                     ),
                     decoration: BoxDecoration(
                       color: _surfaceAlt,
@@ -1092,7 +1084,7 @@ class _SmartRingPageState extends State<SmartRingPage> {
                         Text(
                           'Phiên đo 3 chỉ số',
                           style: TextStyle(
-                            fontSize: 11.5,
+                            fontSize: 11,
                             fontWeight: FontWeight.w800,
                             color: _primaryDark,
                           ),
@@ -1104,111 +1096,33 @@ class _SmartRingPageState extends State<SmartRingPage> {
                   Text(
                     _headlineText,
                     style: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 22,
                       fontWeight: FontWeight.w900,
                       color: Color(0xFF0F172A),
                       letterSpacing: -0.6,
                       height: 1.1,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Text(
                     _supportingText,
                     style: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 12.5,
                       color: Color(0xFF64748B),
-                      fontWeight: FontWeight.w500,
-                      height: 1.45,
+                      fontWeight: FontWeight.w600,
+                      height: 1.4,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 16),
-            _buildProgressDial(),
+            const SizedBox(width: 12),
+            _buildProgressSummaryCard(),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
         _buildProgressSection(),
       ],
-    );
-  }
-
-  Widget _buildGuidanceCard() {
-    const List<String> guidanceItems = <String>[
-      'Đeo nhẫn vừa khít và giữ tay thư giãn trong suốt quá trình đo.',
-      'Hạn chế nói chuyện hoặc cử động mạnh để tín hiệu ổn định hơn.',
-      'Kết quả chỉ phục vụ theo dõi sức khỏe hằng ngày, không thay thế chẩn đoán y khoa.',
-    ];
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _surfaceBorder.withValues(alpha: 0.9)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          const Text(
-            'Hướng dẫn trước khi đo',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Phiên đo này dùng dữ liệu real-time từ Smart Ring và không gửi lên cloud.',
-            style: TextStyle(
-              fontSize: 11.5,
-              color: Color(0xFF64748B),
-              fontWeight: FontWeight.w500,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...guidanceItems.map((String item) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Container(
-                    width: 24,
-                    height: 24,
-                    margin: const EdgeInsets.only(top: 2),
-                    decoration: BoxDecoration(
-                      color: _surfaceAlt,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Icon(
-                      Icons.check_rounded,
-                      size: 16,
-                      color: _primaryDark,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      item,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF475569),
-                        fontWeight: FontWeight.w600,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-        ],
-      ),
     );
   }
 
@@ -1242,12 +1156,13 @@ class _SmartRingPageState extends State<SmartRingPage> {
     );
   }
 
-  Widget _buildProgressDial() {
+  Widget _buildProgressSummaryCard() {
+    final int progressPercent = (_overallProgress * 100).round();
+
     return Container(
-      width: 96,
-      height: 96,
+      width: 104,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -1255,35 +1170,43 @@ class _SmartRingPageState extends State<SmartRingPage> {
         ),
         border: Border.all(color: _surfaceBorder),
       ),
-      child: Center(
-        child: Container(
-          width: 68,
-          height: 68,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white,
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: _primary.withValues(alpha: 0.15),
-                blurRadius: 18,
-                offset: const Offset(0, 8),
-                spreadRadius: -10,
-              ),
-            ],
-          ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: _primary.withValues(alpha: 0.15),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+              spreadRadius: -10,
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               Text(
+                '$progressPercent%',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
                 '${_completedStepsCount.clamp(0, 3)}/3',
                 style: const TextStyle(
-                  fontSize: 18,
+                  fontSize: 22,
                   fontWeight: FontWeight.w900,
                   color: _primaryDark,
                   height: 1,
                 ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 4),
               Text(
                 _isSequenceCompleted ? 'Xong' : 'Bước',
                 style: const TextStyle(
@@ -1300,86 +1223,55 @@ class _SmartRingPageState extends State<SmartRingPage> {
   }
 
   Widget _buildProgressSection() {
-    final int progressPercent = (_overallProgress * 100).round();
-
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.58),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+        color: Colors.white.withValues(alpha: 0.76),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.82)),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: _overallProgress.clamp(0.0, 1.0),
+              minHeight: 10,
+              backgroundColor: const Color(0xFFE2EDF0),
+              valueColor: const AlwaysStoppedAnimation<Color>(_primary),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
             children: <Widget>[
-              Row(
-                children: <Widget>[
-                  const Expanded(
-                    child: Text(
-                      'Tiến độ phiên đo',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '$progressPercent%',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: _primaryDark,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: _overallProgress.clamp(0.0, 1.0),
-                  minHeight: 10,
-                  backgroundColor: const Color(0xFFE2EDF0),
-                  valueColor: const AlwaysStoppedAnimation<Color>(_primary),
+              Expanded(
+                child: _buildStagePill(
+                  label: 'Nhịp tim',
+                  metric: _HealthCheckMetric.heartRate,
+                  stepNumber: 1,
                 ),
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: _buildStagePill(
-                      label: 'Nhịp tim',
-                      metric: _HealthCheckMetric.heartRate,
-                      stepNumber: 1,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: _buildStagePill(
-                      label: 'SpO2',
-                      metric: _HealthCheckMetric.spo2,
-                      stepNumber: 2,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: _buildStagePill(
-                      label: 'Huyết áp',
-                      metric: _HealthCheckMetric.bloodPressure,
-                      stepNumber: 3,
-                    ),
-                  ),
-                ],
+              const SizedBox(width: 6),
+              Expanded(
+                child: _buildStagePill(
+                  label: 'SpO2',
+                  metric: _HealthCheckMetric.spo2,
+                  stepNumber: 2,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _buildStagePill(
+                  label: 'Huyết áp',
+                  metric: _HealthCheckMetric.bloodPressure,
+                  stepNumber: 3,
+                ),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -1487,7 +1379,7 @@ class _SmartRingPageState extends State<SmartRingPage> {
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.94),
         borderRadius: BorderRadius.circular(22),
@@ -1552,7 +1444,7 @@ class _SmartRingPageState extends State<SmartRingPage> {
           const SizedBox(height: 14),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -1588,12 +1480,6 @@ class _SmartRingPageState extends State<SmartRingPage> {
                     color: visual.darkColor,
                     fontWeight: FontWeight.w700,
                   ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _sampleChips(metric, visual),
                 ),
               ],
             ),
@@ -1644,27 +1530,6 @@ class _SmartRingPageState extends State<SmartRingPage> {
   }
 
   Widget _buildPrimaryAction() {
-    if (_connectedDevice == null) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-        ),
-        child: const Text(
-          'Sau khi kết nối Smart Ring, bạn có thể bấm một lần để đo đồng thời nhịp tim, SpO2 và huyết áp.',
-          style: TextStyle(
-            fontSize: 12,
-            color: Color(0xFF64748B),
-            fontWeight: FontWeight.w600,
-            height: 1.45,
-          ),
-        ),
-      );
-    }
-
     if (_isBusy) {
       return Row(
         children: <Widget>[
@@ -1732,87 +1597,231 @@ class _SmartRingPageState extends State<SmartRingPage> {
     );
   }
 
-  List<Widget> _sampleChips(_HealthCheckMetric metric, _MetricVisual visual) {
-    switch (metric) {
-      case _HealthCheckMetric.heartRate:
-        if (_heartRateSamples.isEmpty) {
-          return <Widget>[_emptyChip('Chưa có dữ liệu real-time')];
-        }
-        return _heartRateSamples.reversed
-            .take(5)
-            .map(
-              (int value) => _sampleChip(
-                '$value ${visual.unit}',
-                visual.color.withValues(alpha: 0.12),
-                visual.darkColor,
+  Widget _buildStickyActionBar() {
+    return SafeArea(
+      minimum: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0xFFE2EEF1)),
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 28,
+              offset: const Offset(0, 10),
+              spreadRadius: -18,
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      _stickyHeadline,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${(_overallProgress * 100).round()}%',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      color: _primaryDark,
+                    ),
+                  ),
+                ],
               ),
-            )
-            .toList();
-      case _HealthCheckMetric.spo2:
-        if (_spo2Samples.isEmpty) {
-          return <Widget>[_emptyChip('Chưa có dữ liệu real-time')];
-        }
-        return _spo2Samples.reversed
-            .take(5)
-            .map(
-              (int value) => _sampleChip(
-                '$value${visual.unit}',
-                visual.color.withValues(alpha: 0.12),
-                visual.darkColor,
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: _overallProgress.clamp(0.0, 1.0),
+                  minHeight: 8,
+                  backgroundColor: const Color(0xFFE2EDF0),
+                  valueColor: const AlwaysStoppedAnimation<Color>(_primary),
+                ),
               ),
-            )
-            .toList();
-      case _HealthCheckMetric.bloodPressure:
-        if (_bloodPressureSamples.isEmpty) {
-          return <Widget>[_emptyChip('Chưa có dữ liệu real-time')];
-        }
-        return _bloodPressureSamples.reversed
-            .take(5)
-            .map(
-              (BloodPressureData value) => _sampleChip(
-                '${value.systolic}/${value.diastolic}',
-                visual.color.withValues(alpha: 0.12),
-                visual.darkColor,
+              const SizedBox(height: 8),
+              Row(
+                children: <Widget>[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _stickyAccentColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      _stickyChipLabel,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: _stickyAccentColor,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _stickySupportingText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            )
-            .toList();
+              const SizedBox(height: 10),
+              _buildStickyResultsRow(),
+              const SizedBox(height: 10),
+              _buildPrimaryAction(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStickyResultsRow() {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: _buildStickyResultTile(
+            label: 'Nhịp tim',
+            value: _heartRateValue != null ? '${_heartRateValue!}' : '--',
+            unit: 'BPM',
+            color: _metricVisuals[_HealthCheckMetric.heartRate]!.darkColor,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _buildStickyResultTile(
+            label: 'SpO2',
+            value: _spo2Value != null ? '${_spo2Value!}' : '--',
+            unit: '%',
+            color: _metricVisuals[_HealthCheckMetric.spo2]!.darkColor,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _buildStickyResultTile(
+            label: 'Huyết áp',
+            value:
+                _bloodPressureSystolic != null &&
+                    _bloodPressureDiastolic != null
+                ? '${_bloodPressureSystolic!}/${_bloodPressureDiastolic!}'
+                : '--/--',
+            unit: 'mmHg',
+            color: _metricVisuals[_HealthCheckMetric.bloodPressure]!.darkColor,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStickyResultTile({
+    required String label,
+    required String value,
+    required String unit,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: label == 'Huyết áp' ? 15 : 18,
+              fontWeight: FontWeight.w900,
+              color: color,
+              height: 1,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            unit,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF94A3B8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String get _stickyHeadline {
+    if (_activeMetric != null) {
+      return 'Đang đo ${_metricVisuals[_activeMetric]!.title.toLowerCase()}';
     }
+    if (_isSequenceCompleted) {
+      return 'Phiên đo đã hoàn tất';
+    }
+    return 'Sẵn sàng đo 3 chỉ số';
   }
 
-  Widget _sampleChip(String label, Color background, Color foreground) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          color: foreground,
-        ),
-      ),
-    );
+  String get _stickyChipLabel {
+    if (_activeMetric != null) {
+      return 'Đang chạy';
+    }
+    if (_isSequenceCompleted) {
+      return 'Hoàn tất';
+    }
+    return 'Sẵn sàng';
   }
 
-  Widget _emptyChip(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF64748B),
-        ),
-      ),
-    );
+  String get _stickySupportingText {
+    if (_activeMetric != null) {
+      return _metricVisuals[_activeMetric]!.title;
+    }
+    if (_isSequenceCompleted) {
+      return 'Đã có kết quả nhịp tim, SpO2 và huyết áp';
+    }
+    return 'Chạm để bắt đầu phiên đo';
+  }
+
+  Color get _stickyAccentColor {
+    if (_activeMetric != null) {
+      return _metricVisuals[_activeMetric]!.darkColor;
+    }
+    if (_isSequenceCompleted) {
+      return const Color(0xFF166534);
+    }
+    return _primaryDark;
   }
 
   bool _isMetricCompleted(_HealthCheckMetric metric) {
