@@ -7,12 +7,15 @@ import 'sections/brain_waves/BrainWavesPage.dart';
 import 'sections/home/HomePage.dart';
 import 'sections/meditation/MeditationPage.dart';
 import 'sections/profile/ProfilePage.dart';
+import 'sections/smart_ring/smart_ring_page.dart';
 import 'services/app_state_service.dart';
+import 'services/smart_ring/smart_ring_connection_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppStateService.loadFromPrefs();
   AppStateService.bindBleState();
+  await SmartRingConnectionService.instance.initialize();
   runApp(const MyApp());
 }
 
@@ -67,6 +70,7 @@ class _MainTabPageState extends State<MainTabPage> {
     BrainWavesPage(),
     MeditationPage(),
     ProfilePage(),
+    SmartRingPage(),
   ];
 
   @override
@@ -156,6 +160,11 @@ class _MainTabPageState extends State<MainTabPage> {
                 icon: Icon(Icons.person_outline),
                 activeIcon: Icon(Icons.person),
                 label: 'Cá nhân',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.health_and_safety_outlined),
+                activeIcon: Icon(Icons.health_and_safety),
+                label: 'Smart Ring',
               ),
             ],
           ),

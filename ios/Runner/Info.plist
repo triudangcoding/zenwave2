@@ -46,8 +46,10 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Ứng dụng cần Bluetooth để quét và kết nối với headband ESP32.</string>
+	<string>Ứng dụng cần Bluetooth để quét, kết nối và đo dữ liệu sức khỏe từ Smart Ring.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Ứng dụng cần Bluetooth để nhận trạng thái cảm biến từ ESP32.</string>
+	<string>Ứng dụng cần Bluetooth để duy trì kết nối ổn định với Smart Ring khi đo chỉ số sức khỏe.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Ứng dụng cần quyền vị trí khi sử dụng để tìm và kết nối Smart Ring qua Bluetooth.</string>
 </dict>
 </plist>

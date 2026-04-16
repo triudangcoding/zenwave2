@@ -797,6 +797,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.6.1"
+  yc_product_plugin:
+    dependency: "direct main"
+    description:
+      path: "../ycbt-r12m-package"
+      relative: true
+    source: path
+    version: "0.0.1"
   youtube_player_iframe:
     dependency: "direct main"
     description:
