@@ -105,8 +105,13 @@ class SmartRingMeasureService {
 
   Completer<Object>? _pendingMeasureCompleter;
   SmartRingMeasureType? _pendingMeasureType;
+  bool _pendingMeasureStopsOnFirstSample = false;
+  SmartRingMeasureType? _lockedFirstSampleType;
+  bool _isCancellationRequested = false;
 
   SmartRingMeasureState get currentState => _currentState;
+  SmartRingMeasureType? get currentMeasureType =>
+      _pendingMeasureType ?? _lockedFirstSampleType;
 
   void setCallbacks({
     HeartRateCallback? onHeartRateData,
@@ -232,6 +237,7 @@ class SmartRingMeasureService {
     }
 
     _isCombinedMeasurementRunning = true;
+    _isCancellationRequested = false;
     try {
       final bool connected = await checkDeviceConnection(
         waitForReconnect: true,
@@ -247,6 +253,7 @@ class SmartRingMeasureService {
             type: SmartRingMeasureType.heartRate,
             starter: startHeartRateMeasure,
             timeout: const Duration(seconds: 40),
+            stopAfterFirstSample: true,
           );
 
       await Future<void>.delayed(const Duration(milliseconds: 900));
@@ -254,7 +261,7 @@ class SmartRingMeasureService {
       final SpO2MeasureData spo2 = await _runMeasureStep<SpO2MeasureData>(
         type: SmartRingMeasureType.bloodOxygen,
         starter: startSpO2Measure,
-        timeout: const Duration(seconds: 40),
+        stopAfterFirstSample: false,
       );
 
       await Future<void>.delayed(const Duration(milliseconds: 900));
@@ -264,6 +271,7 @@ class SmartRingMeasureService {
             type: SmartRingMeasureType.bloodPressure,
             starter: startBloodPressureMeasure,
             timeout: const Duration(seconds: 45),
+            stopAfterFirstSample: true,
           );
 
       return SmartRingCombinedMeasurementResult(
@@ -273,35 +281,75 @@ class SmartRingMeasureService {
       );
     } finally {
       _isCombinedMeasurementRunning = false;
+      _isCancellationRequested = false;
       _pendingMeasureCompleter = null;
       _pendingMeasureType = null;
+      _pendingMeasureStopsOnFirstSample = false;
+      _lockedFirstSampleType = null;
     }
+  }
+
+  Future<void> cancelCombinedMeasurementSequence({
+    String reason = 'Đã hủy phiên đo Smart Ring.',
+  }) async {
+    if (!_isCombinedMeasurementRunning && _pendingMeasureType == null) {
+      return;
+    }
+
+    _isCancellationRequested = true;
+    _isCheckingLowSpO2 = false;
+    _lowSpO2Values.clear();
+
+    final SmartRingMeasureType? type = _pendingMeasureType;
+    if (type != null) {
+      try {
+        await _stopMeasureByType(type);
+      } catch (_) {}
+      _failPendingMeasure(StateError(reason));
+    }
+
+    _pendingMeasureStopsOnFirstSample = false;
+    _lockedFirstSampleType = null;
+    _updateState(SmartRingMeasureState.idle);
   }
 
   Future<T> _runMeasureStep<T>({
     required SmartRingMeasureType type,
     required Future<bool> Function() starter,
-    required Duration timeout,
+    Duration? timeout,
+    bool stopAfterFirstSample = false,
   }) async {
     _pendingMeasureType = type;
     _pendingMeasureCompleter = Completer<Object>();
+    _pendingMeasureStopsOnFirstSample = stopAfterFirstSample;
+    _lockedFirstSampleType = null;
 
     final bool started = await starter();
     if (!started) {
       _pendingMeasureCompleter = null;
       _pendingMeasureType = null;
+      _pendingMeasureStopsOnFirstSample = false;
       throw StateError('Không thể bắt đầu ${_measureTypeLabel(type)}.');
     }
 
     try {
-      final Object result = await _pendingMeasureCompleter!.future.timeout(
-        timeout,
-      );
+      final Future<Object> pendingFuture = _pendingMeasureCompleter!.future;
+      final Object result = timeout == null
+          ? await pendingFuture
+          : await pendingFuture.timeout(timeout);
+      if (stopAfterFirstSample) {
+        await _stopMeasureByType(type);
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        _lockedFirstSampleType = null;
+      }
+      _pendingMeasureStopsOnFirstSample = false;
       return result as T;
     } on TimeoutException {
       await _stopMeasureByType(type);
       _pendingMeasureCompleter = null;
       _pendingMeasureType = null;
+      _pendingMeasureStopsOnFirstSample = false;
+      _lockedFirstSampleType = null;
       throw TimeoutException(
         'Đo ${_measureTypeLabel(type)} quá thời gian chờ.',
         timeout,
@@ -494,21 +542,42 @@ class SmartRingMeasureService {
   }
 
   void _handleHeartRateData(int heartRate) {
+    if (_isCancellationRequested) {
+      return;
+    }
+    if (_lockedFirstSampleType == SmartRingMeasureType.heartRate) {
+      return;
+    }
+
     _lastHeartRateData = HeartRateMeasureData(
       value: heartRate,
       timestamp: DateTime.now(),
       type: SmartRingMeasureType.heartRate,
     );
     _onHeartRateData?.call(_lastHeartRateData!);
+    _completePendingMeasure(
+      SmartRingMeasureType.heartRate,
+      _lastHeartRateData!,
+    );
   }
 
   void _handleBloodOxygenData(int bloodOxygen) {
+    if (_isCancellationRequested) {
+      return;
+    }
+    if (_lockedFirstSampleType == SmartRingMeasureType.bloodOxygen) {
+      return;
+    }
+
     _lastSpO2Data = SpO2MeasureData(
       value: bloodOxygen,
       timestamp: DateTime.now(),
       type: SmartRingMeasureType.bloodOxygen,
     );
     _onSpO2Data?.call(_lastSpO2Data!);
+    if (_pendingMeasureStopsOnFirstSample) {
+      _completePendingMeasure(SmartRingMeasureType.bloodOxygen, _lastSpO2Data!);
+    }
 
     if (_isCheckingLowSpO2 &&
         _currentState == SmartRingMeasureState.measuring &&
@@ -532,6 +601,13 @@ class SmartRingMeasureService {
   }
 
   void _handleBloodPressureData(Map<dynamic, dynamic> data) {
+    if (_isCancellationRequested) {
+      return;
+    }
+    if (_lockedFirstSampleType == SmartRingMeasureType.bloodPressure) {
+      return;
+    }
+
     final int? systolic =
         data['systolic'] ??
         data['high'] ??
@@ -554,6 +630,10 @@ class SmartRingMeasureService {
     );
     _currentBloodPressureMeasurements.add(_lastBloodPressureData!);
     _onBloodPressureData?.call(_lastBloodPressureData!);
+    _completePendingMeasure(
+      SmartRingMeasureType.bloodPressure,
+      _lastBloodPressureData!,
+    );
   }
 
   void _markInterrupted(String message) {
@@ -592,6 +672,9 @@ class SmartRingMeasureService {
     if (completer == null || completer.isCompleted) {
       return;
     }
+    if (_pendingMeasureStopsOnFirstSample) {
+      _lockedFirstSampleType = type;
+    }
     completer.complete(result);
     _pendingMeasureCompleter = null;
     _pendingMeasureType = null;
@@ -625,5 +708,8 @@ class SmartRingMeasureService {
     _onBloodPressureMeasureCompleted = null;
     _pendingMeasureCompleter = null;
     _pendingMeasureType = null;
+    _pendingMeasureStopsOnFirstSample = false;
+    _lockedFirstSampleType = null;
+    _isCancellationRequested = false;
   }
 }

@@ -740,12 +740,29 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     return AppStateService.isTouchDetected == true;
   }
 
+  bool get _isEspReady => AppStateService.deviceConnectedNotifier.value;
+
+  bool get _isRingReady =>
+      _smartRingConnectionService.connectedDeviceNotifier.value != null &&
+      _smartRingConnectionService.bluetoothStateNotifier.value ==
+          BluetoothState.connected;
+
+  bool get _canStartMeasurement =>
+      _phase == _MeasurePhase.idle &&
+      !_isStartingCombined &&
+      _isWearing &&
+      _isEspReady &&
+      _isRingReady;
+
+  SmartRingMeasureType? get _activeRingMeasureType =>
+      _smartRingMeasureService.currentMeasureType;
+
   // Prepare countdown
   int _prepCountdown = 5;
 
   // Measuring progress
   int _elapsedSeconds = 0;
-  static const int _measureDurationSec = 35;
+  final GlobalKey _phaseSectionKey = GlobalKey();
 
   // Live chart data (all points stored for scrollable chart)
   final List<double> _alphaPoints = [];
@@ -768,6 +785,9 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   bool _signalWeak = false;
   int _ticksSinceLastPause = 0;
   late int _nextPauseTick; // random tick count until next pause
+  bool _brainCaptureCompleted = false;
+  bool _smartRingSequenceCompleted = false;
+  bool _ringAbortHandled = false;
 
   // Final mock results
   double _alphaAvg = 0;
@@ -776,6 +796,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   double _overallScore = 0;
   double _eegScore = 0;
   double _questionnaireScore = 0;
+  double _smartRingScore = 0;
   String _evaluation = '';
   String _evaluationDetail = '';
   Color _evalColor = const Color(0xFF4F9A67);
@@ -785,6 +806,18 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   String _focusInsight = '';
   String _tensionInsight = '';
   String _copingInsight = '';
+  String _smartRingSummary = '';
+  String _heartRateInsight = '';
+  String _spo2Insight = '';
+  String _bloodPressureInsight = '';
+  String _vitalAlignmentInsight = '';
+
+  // Smart Ring live vitals
+  int? _heartRateValue;
+  int? _spo2Value;
+  int? _bloodPressureSystolic;
+  int? _bloodPressureDiastolic;
+  SmartRingMeasureState _ringMeasureState = SmartRingMeasureState.idle;
 
   // Audio
   final AudioPlayer _audioPlayer = AudioPlayer();
@@ -799,6 +832,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   @override
   void initState() {
     super.initState();
+    _configureMeasureService();
     AppStateService.touchDetectedNotifier.addListener(_onTouchChanged);
     AppStateService.wearingDetectionEnabledNotifier.addListener(
       _onWearingToggleChanged,
@@ -812,11 +846,88 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     _signalResumeTimer?.cancel();
     _audioPlayer.dispose();
     _musicPlayer.dispose();
+    _smartRingMeasureService.setCallbacks(
+      onHeartRateData: null,
+      onSpO2Data: null,
+      onBloodPressureData: null,
+      onStateChanged: null,
+      onError: null,
+      onMeasureCompleted: null,
+      onBloodPressureMeasureCompleted: null,
+    );
     AppStateService.touchDetectedNotifier.removeListener(_onTouchChanged);
     AppStateService.wearingDetectionEnabledNotifier.removeListener(
       _onWearingToggleChanged,
     );
     super.dispose();
+  }
+
+  void _configureMeasureService() {
+    _smartRingMeasureService.setCallbacks(
+      onHeartRateData: (data) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _heartRateValue = data.value;
+        });
+      },
+      onSpO2Data: (data) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _spo2Value = data.value;
+        });
+      },
+      onBloodPressureData: (data) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _bloodPressureSystolic = data.systolic;
+          _bloodPressureDiastolic = data.diastolic;
+        });
+      },
+      onStateChanged: (state) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _ringMeasureState = state;
+        });
+      },
+      onError: (errorMessage) {
+        if (!mounted) {
+          return;
+        }
+        _abortCombinedMeasurementFromRing(errorMessage);
+        setState(() {
+          _ringMeasureState = SmartRingMeasureState.error;
+        });
+      },
+      onMeasureCompleted: (data) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          if (data.type == SmartRingMeasureType.heartRate) {
+            _heartRateValue = data.value;
+          } else if (data.type == SmartRingMeasureType.bloodOxygen) {
+            _spo2Value = data.value;
+          }
+        });
+      },
+      onBloodPressureMeasureCompleted: (data) {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _bloodPressureSystolic = data.systolic;
+          _bloodPressureDiastolic = data.diastolic;
+        });
+      },
+    );
   }
 
   Future<void> _playBeep() async {
@@ -858,6 +969,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
 
   void _pauseForHeadbandRemoved() {
     _headbandRemovedHandled = true;
+    unawaited(_smartRingMeasureService.cancelCombinedMeasurementSequence());
     _phaseTimer?.cancel();
     _chartTimer?.cancel();
     _signalResumeTimer?.cancel();
@@ -866,6 +978,14 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
       _alphaPoints.clear();
       _betaPoints.clear();
       _deltaPoints.clear();
+      _heartRateValue = null;
+      _spo2Value = null;
+      _bloodPressureSystolic = null;
+      _bloodPressureDiastolic = null;
+      _ringMeasureState = SmartRingMeasureState.idle;
+      _brainCaptureCompleted = false;
+      _smartRingSequenceCompleted = false;
+      _ringAbortHandled = false;
     });
     if (mounted) {
       ScaffoldMessenger.of(context)
@@ -882,18 +1002,53 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     }
   }
 
+  void _abortCombinedMeasurementFromRing(String message) {
+    final bool shouldAbort =
+        _phase == _MeasurePhase.preparing || _phase == _MeasurePhase.measuring;
+    if (!mounted || !shouldAbort || _ringAbortHandled) {
+      return;
+    }
+
+    _ringAbortHandled = true;
+    _phaseTimer?.cancel();
+    _chartTimer?.cancel();
+    _signalResumeTimer?.cancel();
+    unawaited(
+      _smartRingMeasureService.cancelCombinedMeasurementSequence(
+        reason: message,
+      ),
+    );
+
+    setState(() {
+      _phase = _MeasurePhase.idle;
+      _alphaPoints.clear();
+      _betaPoints.clear();
+      _deltaPoints.clear();
+      _heartRateValue = null;
+      _spo2Value = null;
+      _bloodPressureSystolic = null;
+      _bloodPressureDiastolic = null;
+      _brainCaptureCompleted = false;
+      _smartRingSequenceCompleted = false;
+    });
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
   Future<void> _startCombinedFlow() async {
     if (_isStartingCombined || _phase != _MeasurePhase.idle) {
       return;
     }
 
-    final bool espReady = AppStateService.deviceConnectedNotifier.value;
-    final bool ringReady =
-        _smartRingConnectionService.connectedDeviceNotifier.value != null &&
-        _smartRingConnectionService.bluetoothStateNotifier.value ==
-            BluetoothState.connected;
-
-    if (!espReady || !ringReady) {
+    if (!_isEspReady || !_isRingReady) {
       if (mounted) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
@@ -911,11 +1066,18 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
 
     setState(() {
       _isStartingCombined = true;
+      _heartRateValue = null;
+      _spo2Value = null;
+      _bloodPressureSystolic = null;
+      _bloodPressureDiastolic = null;
+      _ringMeasureState = SmartRingMeasureState.idle;
+      _brainCaptureCompleted = false;
+      _smartRingSequenceCompleted = false;
+      _ringAbortHandled = false;
     });
 
     try {
       _startFlow();
-      unawaited(_runSmartRingMeasurement());
     } finally {
       if (mounted) {
         setState(() {
@@ -927,9 +1089,28 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
 
   Future<void> _runSmartRingMeasurement() async {
     try {
-      await _smartRingMeasureService.runCombinedMeasurementSequence();
+      final SmartRingCombinedMeasurementResult result =
+          await _smartRingMeasureService.runCombinedMeasurementSequence();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _heartRateValue = result.heartRate.value;
+        _spo2Value = result.spo2.value;
+        _bloodPressureSystolic = result.bloodPressure.systolic;
+        _bloodPressureDiastolic = result.bloodPressure.diastolic;
+        _ringMeasureState = SmartRingMeasureState.success;
+        _smartRingSequenceCompleted = true;
+      });
+      _completeBrainCapture();
     } catch (error) {
       if (!mounted) {
+        return;
+      }
+
+      final String message = error.toString();
+      if (_ringAbortHandled || message.contains('Đã hủy phiên đo Smart Ring')) {
         return;
       }
 
@@ -938,7 +1119,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            content: Text('Smart Ring đo thất bại: $error'),
+            content: Text('Smart Ring đo thất bại: $message'),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 4),
           ),
@@ -951,6 +1132,9 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     setState(() {
       _phase = _MeasurePhase.preparing;
       _prepCountdown = 5;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToPhaseSection();
     });
     _phaseTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
@@ -972,6 +1156,8 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     _betaPoints.clear();
     _deltaPoints.clear();
     _elapsedSeconds = 0;
+    _brainCaptureCompleted = false;
+    _ringAbortHandled = false;
 
     final rng = Random();
 
@@ -1005,11 +1191,16 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
 
     setState(() {
       _phase = _MeasurePhase.measuring;
+      _ringMeasureState = SmartRingMeasureState.starting;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToPhaseSection();
     });
 
     _playBeep(); // beep at measurement start
+    unawaited(_runSmartRingMeasurement());
 
-    // Generate live data every 500ms → 2 points/sec, 35s = ~70 ticks
+    // Generate live EEG data every 500ms until Smart Ring finishes the sequence
     _chartTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
       if (!mounted) {
         timer.cancel();
@@ -1020,8 +1211,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
       if (_signalWeak) return; // paused, skip data generation
 
       _ticksSinceLastPause++;
-      if (_ticksSinceLastPause >= _nextPauseTick &&
-          _elapsedSeconds < _measureDurationSec - 4) {
+      if (_ticksSinceLastPause >= _nextPauseTick) {
         // Trigger weak signal pause
         _ticksSinceLastPause = 0;
         _nextPauseTick = 20 + rng.nextInt(20); // next pause after 10-20s
@@ -1068,16 +1258,34 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         _elapsedSeconds++;
         if (mounted) setState(() {});
         // beep every 5 seconds during measurement
-        if (_elapsedSeconds % 5 == 0 && _elapsedSeconds < _measureDurationSec) {
+        if (_elapsedSeconds > 0 && _elapsedSeconds % 5 == 0) {
           _playBeep();
         }
       }
-
-      if (_elapsedSeconds >= _measureDurationSec) {
-        timer.cancel();
-        _finishMeasurement();
-      }
     });
+  }
+
+  void _completeBrainCapture() {
+    _chartTimer?.cancel();
+    _signalResumeTimer?.cancel();
+    _signalWeak = false;
+    _brainCaptureCompleted = true;
+    if (mounted) {
+      setState(() {});
+    }
+    _tryFinishMeasurement();
+  }
+
+  void _tryFinishMeasurement() {
+    if (_phase == _MeasurePhase.result) {
+      return;
+    }
+
+    if (!_brainCaptureCompleted || !_smartRingSequenceCompleted) {
+      return;
+    }
+
+    _finishMeasurement();
   }
 
   void _finishMeasurement() {
@@ -1109,11 +1317,17 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
       _questionnaireScore = 5.5; // neutral fallback
     }
 
-    // ── Blend: 60% EEG + 40% questionnaire ──
-    final rng = Random();
-    final blended = _eegScore * 0.6 + _questionnaireScore * 0.4;
-    // Small noise so repeated sessions differ
-    _overallScore = (blended + (rng.nextDouble() - 0.5) * 0.8).clamp(1.5, 9.5);
+    // ── Smart Ring score from HR, SpO2 and blood pressure ──
+    _smartRingScore = _deriveSmartRingInsights();
+
+    // ── Blend: 50% EEG + 20% questionnaire + 30% Smart Ring ──
+    double weightedTotal = _eegScore * 0.5 + _questionnaireScore * 0.2;
+    double totalWeight = 0.7;
+    if (_hasSmartRingVitals) {
+      weightedTotal += _smartRingScore * 0.3;
+      totalWeight += 0.3;
+    }
+    _overallScore = (weightedTotal / totalWeight).clamp(1.5, 9.5);
     _overallScore = double.parse(_overallScore.toStringAsFixed(1));
 
     // ── Questionnaire-based insights (per-dimension) ──
@@ -1149,6 +1363,12 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
           'thiền hoặc hít thở sâu, đồng thời cân nhắc tham khảo chuyên gia.';
       _evalColor = const Color(0xFFD32F2F);
     }
+
+    _evaluationDetail = [
+      _evaluationDetail,
+      if (_smartRingSummary.isNotEmpty) _smartRingSummary,
+      if (_vitalAlignmentInsight.isNotEmpty) _vitalAlignmentInsight,
+    ].join(' ');
 
     setState(() {
       _phase = _MeasurePhase.result;
@@ -1232,7 +1452,130 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     }
   }
 
+  double _deriveSmartRingInsights() {
+    _smartRingSummary = '';
+    _heartRateInsight = '';
+    _spo2Insight = '';
+    _bloodPressureInsight = '';
+    _vitalAlignmentInsight = '';
+
+    final List<double> scores = <double>[];
+    final List<String> summaryParts = <String>[];
+
+    final int? heartRate = _heartRateValue;
+    if (heartRate != null) {
+      double heartRateScore;
+      if (heartRate >= 55 && heartRate <= 85) {
+        heartRateScore = 9.0;
+        _heartRateInsight =
+            'Nhịp tim $heartRate bpm nằm trong vùng ổn định, cho thấy cơ thể đang đáp ứng khá êm trong suốt phiên đo.';
+      } else if (heartRate >= 86 && heartRate <= 95) {
+        heartRateScore = 7.3;
+        _heartRateInsight =
+            'Nhịp tim $heartRate bpm hơi cao hơn mức nghỉ lý tưởng, gợi ý cơ thể vẫn còn duy trì một mức kích hoạt nhẹ.';
+      } else if (heartRate > 95) {
+        heartRateScore = 5.0;
+        _heartRateInsight =
+            'Nhịp tim $heartRate bpm tăng rõ trong lúc đo, thường đi cùng trạng thái căng thẳng, bồn chồn hoặc chưa hồi phục hoàn toàn.';
+      } else {
+        heartRateScore = 6.5;
+        _heartRateInsight =
+            'Nhịp tim $heartRate bpm khá thấp, cần đọc cùng bối cảnh nghỉ ngơi và cảm giác cơ thể thực tế để diễn giải chính xác hơn.';
+      }
+      scores.add(heartRateScore);
+      summaryParts.add('nhịp tim $heartRate bpm');
+    }
+
+    final int? spo2 = _spo2Value;
+    if (spo2 != null) {
+      double spo2Score;
+      if (spo2 >= 97) {
+        spo2Score = 9.4;
+        _spo2Insight =
+            'SpO2 $spo2% rất tốt, cho thấy tưới máu ngoại vi và tín hiệu cảm biến trong phiên đo tương đối ổn định.';
+      } else if (spo2 >= 95) {
+        spo2Score = 8.4;
+        _spo2Insight =
+            'SpO2 $spo2% vẫn nằm trong ngưỡng an toàn, nhưng chưa phải mức tối ưu nhất của trạng thái thư giãn sâu.';
+      } else if (spo2 >= 93) {
+        spo2Score = 6.0;
+        _spo2Insight =
+            'SpO2 $spo2% hơi thấp, có thể liên quan đến tín hiệu cảm biến chưa đẹp hoặc cơ thể chưa thật sự ổn định khi đo.';
+      } else {
+        spo2Score = 3.8;
+        _spo2Insight =
+            'SpO2 $spo2% thấp hơn kỳ vọng, nên ưu tiên kiểm tra lại vị trí đeo nhẫn và đọc kết quả cùng tình trạng thực tế của người đo.';
+      }
+      scores.add(spo2Score);
+      summaryParts.add('SpO2 $spo2%');
+    }
+
+    final int? systolic = _bloodPressureSystolic;
+    final int? diastolic = _bloodPressureDiastolic;
+    if (systolic != null && diastolic != null) {
+      double bloodPressureScore;
+      if (systolic < 120 && diastolic < 80) {
+        bloodPressureScore = 9.0;
+        _bloodPressureInsight =
+            'Huyết áp $systolic/$diastolic mmHg nằm trong vùng đẹp, phù hợp với một phiên đo có mức hoạt hóa cơ thể thấp.';
+      } else if (systolic < 130 && diastolic < 80) {
+        bloodPressureScore = 7.4;
+        _bloodPressureInsight =
+            'Huyết áp $systolic/$diastolic mmHg hơi nhích lên nhưng vẫn còn tương đối ổn, thường gặp khi cơ thể chưa thả lỏng hoàn toàn.';
+      } else if (systolic < 140 && diastolic < 90) {
+        bloodPressureScore = 5.6;
+        _bloodPressureInsight =
+            'Huyết áp $systolic/$diastolic mmHg cho thấy hệ thần kinh giao cảm vẫn đang hoạt động ở mức vừa, nên kết quả thư giãn cần đọc thận trọng hơn.';
+      } else {
+        bloodPressureScore = 3.9;
+        _bloodPressureInsight =
+            'Huyết áp $systolic/$diastolic mmHg còn khá cao trong phiên đo, gợi ý cơ thể vẫn chịu tải stress sinh lý đáng kể.';
+      }
+      scores.add(bloodPressureScore);
+      summaryParts.add('huyết áp $systolic/$diastolic mmHg');
+    }
+
+    if (summaryParts.isNotEmpty) {
+      _smartRingSummary =
+          'Smart Ring bổ sung thêm bức tranh sinh tồn với ${summaryParts.join(', ')}.';
+    }
+
+    final bool eegLooksRelaxed = _eegScore >= 7.0;
+    final bool eegLooksStressed = _eegScore < 6.0;
+    final bool vitalsElevated =
+        (heartRate != null && heartRate > 95) ||
+        (spo2 != null && spo2 < 95) ||
+        (systolic != null && systolic >= 130) ||
+        (diastolic != null && diastolic >= 85);
+    final bool vitalsStable =
+        (heartRate == null || (heartRate >= 55 && heartRate <= 85)) &&
+        (spo2 == null || spo2 >= 95) &&
+        ((systolic == null || diastolic == null) ||
+            (systolic < 130 && diastolic < 85));
+
+    if (eegLooksRelaxed && vitalsElevated) {
+      _vitalAlignmentInsight =
+          'Điểm cần lưu ý là EEG nghiêng về thư giãn, nhưng Smart Ring vẫn ghi nhận cơ thể chưa hạ tải hoàn toàn. Điều này thường xảy ra khi tâm trí đã dịu hơn nhưng phản ứng sinh lý cần thêm thời gian để ổn định.';
+    } else if (eegLooksStressed && vitalsStable) {
+      _vitalAlignmentInsight =
+          'EEG cho thấy xu hướng căng thẳng nhận thức, trong khi Smart Ring vẫn khá ổn định. Điều này gợi ý tải stress đang thiên về mặt tinh thần hơn là phản ứng sinh lý toàn thân.';
+    } else if (eegLooksRelaxed && vitalsStable) {
+      _vitalAlignmentInsight =
+          'EEG và Smart Ring đồng thuận khá tốt: cả hoạt động sóng não lẫn các chỉ số sinh tồn đều ủng hộ trạng thái cân bằng và thư giãn.';
+    } else if (vitalsElevated) {
+      _vitalAlignmentInsight =
+          'Cả sóng não và tín hiệu Smart Ring đều cho thấy cơ thể còn hoạt hóa đáng kể, vì vậy phần kết luận được nghiêng nhiều hơn về phía cần phục hồi thêm.';
+    }
+
+    if (scores.isEmpty) {
+      return 5.5;
+    }
+    final double score = scores.reduce((a, b) => a + b) / scores.length;
+    return score.clamp(1.0, 10.0);
+  }
+
   void _reset() {
+    unawaited(_smartRingMeasureService.cancelCombinedMeasurementSequence());
     _phaseTimer?.cancel();
     _chartTimer?.cancel();
     _signalResumeTimer?.cancel();
@@ -1243,6 +1586,26 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
       _alphaPoints.clear();
       _betaPoints.clear();
       _deltaPoints.clear();
+      _heartRateValue = null;
+      _spo2Value = null;
+      _bloodPressureSystolic = null;
+      _bloodPressureDiastolic = null;
+      _ringMeasureState = SmartRingMeasureState.idle;
+      _brainCaptureCompleted = false;
+      _smartRingSequenceCompleted = false;
+      _ringAbortHandled = false;
+      _smartRingScore = 0;
+      _evaluation = '';
+      _evaluationDetail = '';
+      _sleepInsight = '';
+      _focusInsight = '';
+      _tensionInsight = '';
+      _copingInsight = '';
+      _smartRingSummary = '';
+      _heartRateInsight = '';
+      _spo2Insight = '';
+      _bloodPressureInsight = '';
+      _vitalAlignmentInsight = '';
     });
   }
 
@@ -1282,11 +1645,17 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
               if (AppStateService.isWearingDetectionEnabled)
                 _buildWearingStatus(),
               const SizedBox(height: 20),
-              // ── Phase content ──
-              if (_phase == _MeasurePhase.idle) _buildIdle(),
-              if (_phase == _MeasurePhase.preparing) _buildPreparing(),
-              if (_phase == _MeasurePhase.measuring) _buildMeasuring(),
-              if (_phase == _MeasurePhase.result) _buildResult(),
+              Container(
+                key: _phaseSectionKey,
+                child: Column(
+                  children: [
+                    if (_phase == _MeasurePhase.idle) _buildIdle(),
+                    if (_phase == _MeasurePhase.preparing) _buildPreparing(),
+                    if (_phase == _MeasurePhase.measuring) _buildMeasuring(),
+                    if (_phase == _MeasurePhase.result) _buildResult(),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -1338,58 +1707,120 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     required String ringName,
   }) {
     final bool disableDisconnect = _phase == _MeasurePhase.measuring;
+    final bool bothReady = _isEspReady && _isRingReady;
+    final int readyCount = (_isEspReady ? 1 : 0) + (_isRingReady ? 1 : 0);
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: _buildReadyDeviceCard(
-              title: 'ESP32',
-              name: deviceName,
-              accent: const Color(0xFF129EAF),
-              icon: Icons.memory_rounded,
-              actionLabel: 'Ngắt kết nối',
-              onDisconnect: disableDisconnect
-                  ? null
-                  : () async {
-                      _reset();
-                      await BleService.instance.disconnect();
-                    },
+    if (bothReady) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFDDECEF)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x12000000),
+              blurRadius: 18,
+              offset: Offset(0, 8),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _buildReadyDeviceCard(
-              title: 'Smart Ring',
-              name: ringName,
-              accent: const Color(0xFF18ADC3),
-              icon: Icons.health_and_safety_rounded,
-              actionLabel: 'Ngắt kết nối',
-              onDisconnect: disableDisconnect
-                  ? null
-                  : () async {
-                      _reset();
-                      await _smartRingConnectionService.disconnectDevice();
-                    },
+          ],
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(11),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF18ADC3), Color(0xFF0F8FA4)],
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.sensors_rounded,
+                    size: 18,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Thiết bị cho phiên đo',
+                    style: TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.neutral900,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF8F1),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '$readyCount/2 sẵn sàng',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF2E7D32),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildConnectedDevicePill(
+                    title: 'ESP32',
+                    name: deviceName,
+                    detail: 'EEG headband',
+                    accent: const Color(0xFF129EAF),
+                    icon: Icons.memory_rounded,
+                    onDisconnect: disableDisconnect
+                        ? null
+                        : () async {
+                            _reset();
+                            await BleService.instance.disconnect();
+                          },
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _buildConnectedDevicePill(
+                    title: 'Smart Ring',
+                    name: ringName,
+                    detail: 'HR • SpO2 • BP',
+                    accent: const Color(0xFF18ADC3),
+                    icon: Icons.favorite_rounded,
+                    onDisconnect: disableDisconnect
+                        ? null
+                        : () async {
+                            _reset();
+                            await _smartRingConnectionService
+                                .disconnectDevice();
+                          },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
 
-  Widget _buildReadyDeviceCard({
-    required String title,
-    required String name,
-    required Color accent,
-    required IconData icon,
-    required String actionLabel,
-    required Future<void> Function()? onDisconnect,
-  }) {
     return Container(
-      height: double.infinity,
-      padding: const EdgeInsets.all(16),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(16),
@@ -1401,117 +1832,304 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
           Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
-                  color: accent.withValues(alpha: 0.12),
+                  color: const Color(0xFF129EAF).withValues(alpha: 0.12),
                 ),
-                child: Icon(icon, color: accent, size: 20),
+                child: const Icon(
+                  Icons.devices_rounded,
+                  color: Color(0xFF129EAF),
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 10),
-              Expanded(
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Thiết bị cho phiên đo',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.neutral900,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'ESP32 cho EEG, Smart Ring cho nhịp tim, SpO2 và huyết áp.',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: AppColors.neutral600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: readyCount == 2
+                      ? const Color(0xFFEFF8F1)
+                      : const Color(0xFFF4F7F8),
+                  borderRadius: BorderRadius.circular(999),
+                ),
                 child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.neutral900,
+                  '$readyCount/2 sẵn sàng',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: readyCount == 2
+                        ? const Color(0xFF2E7D32)
+                        : AppColors.neutral600,
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 14),
-          Text(
-            'Thiết bị đã kết nối',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: accent,
-            ),
+          _buildCompactConnectedDeviceRow(
+            title: 'ESP32',
+            name: deviceName,
+            detail: 'Headband EEG',
+            accent: const Color(0xFF129EAF),
+            icon: Icons.memory_rounded,
+            onDisconnect: disableDisconnect
+                ? null
+                : () async {
+                    _reset();
+                    await BleService.instance.disconnect();
+                  },
           ),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 40,
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: Text(
-                name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.neutral800,
-                ),
-              ),
-            ),
+          const SizedBox(height: 10),
+          _buildCompactConnectedDeviceRow(
+            title: 'Smart Ring',
+            name: ringName,
+            detail: 'HR • SpO2 • BP',
+            accent: const Color(0xFF18ADC3),
+            icon: Icons.health_and_safety_rounded,
+            onDisconnect: disableDisconnect
+                ? null
+                : () async {
+                    _reset();
+                    await _smartRingConnectionService.disconnectDevice();
+                  },
           ),
-          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConnectedDevicePill({
+    required String title,
+    required String name,
+    required String detail,
+    required Color accent,
+    required IconData icon,
+    required Future<void> Function()? onDisconnect,
+  }) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [accent.withValues(alpha: 0.08), Colors.white],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
-              color: const Color(0xFFEFF8F1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFD4EED9)),
+              borderRadius: BorderRadius.circular(10),
+              color: accent.withValues(alpha: 0.13),
             ),
-            child: const Row(
+            child: Icon(icon, color: accent, size: 17),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.check_circle_rounded,
-                  size: 16,
-                  color: Color(0xFF4F9A67),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.neutral900,
+                  ),
                 ),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Sẵn sàng cho phiên đo kết hợp',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF2E7D32),
-                      fontWeight: FontWeight.w600,
-                      height: 1.3,
-                    ),
+                const SizedBox(height: 2),
+                Text(
+                  name,
+                  maxLines: 2,
+                  overflow: TextOverflow.fade,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.neutral700,
+                    height: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  detail,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: accent,
                   ),
                 ),
               ],
             ),
           ),
-          const Spacer(),
-          const SizedBox(height: 14),
+          const SizedBox(width: 8),
           SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
+            width: 26,
+            height: 26,
+            child: IconButton(
+              padding: EdgeInsets.zero,
               onPressed: onDisconnect == null
                   ? null
                   : () async {
                       await onDisconnect();
                     },
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(44),
-                side: BorderSide(
-                  color: onDisconnect == null
-                      ? const Color(0xFFE5E7EB)
-                      : const Color(0xFFF2C9CE),
+              tooltip: 'Ngắt kết nối $title',
+              style: IconButton.styleFrom(
+                backgroundColor: onDisconnect == null
+                    ? const Color(0xFFF3F4F6)
+                    : const Color(0xFFFFF1F2),
+                foregroundColor: onDisconnect == null
+                    ? AppColors.neutral400
+                    : AppColors.red600,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
+              ),
+              icon: const Icon(Icons.link_off_rounded, size: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactConnectedDeviceRow({
+    required String title,
+    required String name,
+    required String detail,
+    required Color accent,
+    required IconData icon,
+    required Future<void> Function()? onDisconnect,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: accent.withValues(alpha: 0.12),
+            ),
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: Icon(icon, color: accent, size: 20),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.neutral900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.neutral700,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF34A853),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        detail,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: accent,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 44,
+            height: 44,
+            child: IconButton(
+              onPressed: onDisconnect == null
+                  ? null
+                  : () async {
+                      await onDisconnect();
+                    },
+              tooltip: 'Ngắt kết nối $title',
+              style: IconButton.styleFrom(
+                backgroundColor: onDisconnect == null
+                    ? const Color(0xFFF3F4F6)
+                    : const Color(0xFFFFF1F2),
+                foregroundColor: onDisconnect == null
+                    ? AppColors.neutral400
+                    : AppColors.red600,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: Text(
-                actionLabel,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: onDisconnect == null
-                      ? AppColors.neutral400
-                      : AppColors.red600,
-                ),
-              ),
+              icon: const Icon(Icons.link_off_rounded, size: 20),
             ),
           ),
         ],
@@ -1556,7 +2174,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         ),
         const SizedBox(height: 10),
         const Text(
-          'ESP32 và Smart Ring đã sẵn sàng.\nBấm nút bên dưới để bắt đầu đo đồng thời.',
+          'ESP32 và Smart Ring đã sẵn sàng.\nPhiên đo sẽ tự chốt khi Smart Ring hoàn tất chuỗi nhịp tim, SpO2 và huyết áp.',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 14,
@@ -1568,9 +2186,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         _buildPrimaryButton(
           label: 'Bắt đầu đo',
           icon: Icons.waves,
-          onPressed: _isWearing && !_isStartingCombined
-              ? _startCombinedFlow
-              : null,
+          onPressed: _canStartMeasurement ? _startCombinedFlow : null,
         ),
         if (!_isWearing && AppStateService.isWearingDetectionEnabled)
           const Padding(
@@ -1676,16 +2292,65 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     );
   }
 
+  Future<void> _scrollToPhaseSection() async {
+    final BuildContext? context = _phaseSectionKey.currentContext;
+    if (context == null) {
+      return;
+    }
+    await Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 480),
+      curve: Curves.easeOutCubic,
+      alignment: 0.04,
+    );
+  }
+
+  String get _elapsedDurationLabel {
+    final int minutes = _elapsedSeconds ~/ 60;
+    final int seconds = _elapsedSeconds % 60;
+    final String mm = minutes.toString().padLeft(2, '0');
+    final String ss = seconds.toString().padLeft(2, '0');
+    return '$mm:$ss';
+  }
+
+  double get _measurementFlowProgress {
+    final SmartRingMeasureType? activeType = _activeRingMeasureType;
+    switch (_ringMeasureState) {
+      case SmartRingMeasureState.starting:
+        return 0.08;
+      case SmartRingMeasureState.measuring:
+        if (activeType == SmartRingMeasureType.heartRate) {
+          return _heartRateValue == null ? 0.18 : 0.32;
+        }
+        if (activeType == SmartRingMeasureType.bloodOxygen) {
+          return _spo2Value == null ? 0.44 : 0.62;
+        }
+        if (activeType == SmartRingMeasureType.bloodPressure) {
+          return (_bloodPressureSystolic == null ||
+                  _bloodPressureDiastolic == null)
+              ? 0.76
+              : 0.98;
+        }
+        return 0.2;
+      case SmartRingMeasureState.stopping:
+        return 0.9;
+      case SmartRingMeasureState.success:
+        return 1.0;
+      case SmartRingMeasureState.error:
+      case SmartRingMeasureState.deviceDisconnected:
+      case SmartRingMeasureState.idle:
+        return _smartRingSequenceCompleted ? 1.0 : 0.04;
+    }
+  }
+
   // ── Phase: Measuring ─────────────────────────────────────────────────────
 
   Widget _buildMeasuring() {
-    final progress = _elapsedSeconds / _measureDurationSec;
-    final remaining = _measureDurationSec - _elapsedSeconds;
+    final double progress = _measurementFlowProgress;
 
     return Column(
       children: [
         const SizedBox(height: 8),
-        // Timer + progress
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -1704,7 +2369,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                '${remaining}s còn lại',
+                '$_elapsedDurationLabel đã đo',
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -1714,67 +2379,15 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: LinearProgressIndicator(
-            value: progress.clamp(0.0, 1.0),
-            minHeight: 5,
-            backgroundColor: const Color(0xFFE0E0E0),
-            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF129EAF)),
-          ),
-        ),
-        const SizedBox(height: 16),
-        // Live chart (scrollable)
-        _InteractiveWaveChart(
-          alpha: _alphaPoints,
-          beta: _betaPoints,
-          delta: _deltaPoints,
-          height: 220,
-          pointsPerScreen: 40,
-          autoScrollToEnd: true,
-        ),
-        const SizedBox(height: 12),
-        // Weak signal warning
-        if (_signalWeak)
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF3E0),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFFFCC80)),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.signal_cellular_connected_no_internet_0_bar,
-                  size: 18,
-                  color: Color(0xFFEF6C00),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Tín hiệu yếu — vui lòng ngồi yên...',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFFE65100),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        // Legend
-        _buildLegend(),
+        const SizedBox(height: 14),
+        _buildMeasurementSurface(progress: progress),
         const SizedBox(height: 20),
         Text(
           _signalWeak
               ? 'Đang khôi phục kết nối...'
-              : 'Vui lòng giữ yên và nhắm mắt...',
+              : 'Vui lòng giữ yên. EEG sẽ tiếp tục ghi nhận cho đến khi Smart Ring hoàn tất bước huyết áp.',
           style: TextStyle(fontSize: 14, color: AppColors.neutral600),
+          textAlign: TextAlign.center,
         ),
       ],
     );
@@ -1850,6 +2463,8 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         const SizedBox(height: 10),
         _buildLegend(),
         const SizedBox(height: 16),
+        _buildVitalsPanel(isLive: false),
+        const SizedBox(height: 16),
         // ── Stress scale ──
         _buildStressScale(),
         const SizedBox(height: 16),
@@ -1887,6 +2502,11 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                 ],
               ),
               const SizedBox(height: 10),
+              const Text(
+                'Tổng hợp từ EEG, Smart Ring và khảo sát nền ban đầu.',
+                style: TextStyle(fontSize: 12, color: AppColors.neutral600),
+              ),
+              const SizedBox(height: 8),
               Text(
                 _evaluationDetail,
                 style: const TextStyle(
@@ -1899,7 +2519,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
               // Quick stats row
               Row(
                 children: [
-                  _buildMiniStat('Thời gian đo', '${_measureDurationSec}s'),
+                  _buildMiniStat('Thời gian đo', _elapsedDurationLabel),
                   const SizedBox(width: 12),
                   _buildMiniStat('Mẫu thu thập', '${_alphaPoints.length}'),
                   const SizedBox(width: 12),
@@ -1933,15 +2553,22 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                     _scoreBreakdownRow(
                       'Sóng não (EEG)',
                       _eegScore,
-                      '60%',
+                      '50%',
                       const Color(0xFF129EAF),
                     ),
                     const SizedBox(height: 4),
                     _scoreBreakdownRow(
                       'Khảo sát 10 câu hỏi',
                       _questionnaireScore,
-                      '40%',
+                      '20%',
                       const Color(0xFF7C4DFF),
+                    ),
+                    const SizedBox(height: 4),
+                    _scoreBreakdownRow(
+                      'Smart Ring',
+                      _smartRingScore,
+                      '30%',
+                      const Color(0xFF18ADC3),
                     ),
                   ],
                 ),
@@ -1950,6 +2577,8 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
           ),
         ),
         const SizedBox(height: 16),
+        if (_hasSmartRingInsights) _buildSmartRingInsightsCard(),
+        if (_hasSmartRingInsights) const SizedBox(height: 16),
         // ── Questionnaire-based insights ──
         if (_sleepInsight.isNotEmpty ||
             _focusInsight.isNotEmpty ||
@@ -2043,6 +2672,737 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   }
 
   // ── Shared widgets ───────────────────────────────────────────────────────
+
+  Widget _buildMeasurementSurface({required double progress}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFF9FEFF), Color(0xFFF2FBFD)],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFD7EEF2)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14089BB0),
+            blurRadius: 24,
+            offset: Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF18ADC3), Color(0xFF0F8FA4)],
+                  ),
+                ),
+                child: const Icon(
+                  Icons.multiline_chart_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Bề mặt đo đồng bộ',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.neutral900,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'EEG và Smart Ring hiển thị trong cùng một nhịp theo dõi.',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: AppColors.neutral600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _buildSurfaceStatusBadge(),
+            ],
+          ),
+          const SizedBox(height: 16),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress.clamp(0.0, 1.0),
+              minHeight: 6,
+              backgroundColor: const Color(0xFFD9E8EC),
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                Color(0xFF129EAF),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFE3F1F4)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F8FB),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        'EEG live',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F8FA4),
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      _elapsedDurationLabel,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _InteractiveWaveChart(
+                  alpha: _alphaPoints,
+                  beta: _betaPoints,
+                  delta: _deltaPoints,
+                  height: 220,
+                  pointsPerScreen: 40,
+                  autoScrollToEnd: true,
+                ),
+                if (_signalWeak) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3E0),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFFCC80)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.signal_cellular_connected_no_internet_0_bar,
+                          size: 18,
+                          color: Color(0xFFEF6C00),
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Tín hiệu yếu — vui lòng ngồi yên...',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFE65100),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                _buildLegend(),
+                const SizedBox(height: 14),
+                _buildLiveSmartRingStrip(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSurfaceStatusBadge() {
+    final bool active =
+        _ringMeasureState == SmartRingMeasureState.starting ||
+        _ringMeasureState == SmartRingMeasureState.measuring ||
+        _ringMeasureState == SmartRingMeasureState.stopping;
+
+    final Color bg = active ? const Color(0xFFE8F8FB) : const Color(0xFFEFF8F1);
+    final Color fg = active ? const Color(0xFF0F8FA4) : const Color(0xFF2E7D32);
+
+    final String label = active ? 'Smart Ring đang đo' : 'Đồng bộ ổn định';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: fg),
+      ),
+    );
+  }
+
+  Widget _buildLiveSmartRingStrip() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FBFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFDCECF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.favorite_rounded,
+                size: 18,
+                color: Color(0xFF18ADC3),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Smart Ring đồng bộ theo từng bước đo',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.neutral900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _ringStatusText(isLive: true),
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.neutral600,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _buildLiveMetricCard(
+                  type: SmartRingMeasureType.heartRate,
+                  title: 'Nhịp tim',
+                  value: _heartRateValue == null ? '--' : '${_heartRateValue!}',
+                  unit: 'bpm',
+                  accent: const Color(0xFFE8575A),
+                  icon: Icons.favorite_outline_rounded,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildLiveMetricCard(
+                  type: SmartRingMeasureType.bloodOxygen,
+                  title: 'SpO2',
+                  value: _spo2Value == null ? '--' : '${_spo2Value!}',
+                  unit: '%',
+                  accent: const Color(0xFF129EAF),
+                  icon: Icons.air_rounded,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildLiveMetricCard(
+                  type: SmartRingMeasureType.bloodPressure,
+                  title: 'Huyết áp',
+                  value: _bloodPressureLabel,
+                  unit: 'mmHg',
+                  accent: const Color(0xFF8E59FF),
+                  icon: Icons.monitor_heart_outlined,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLiveMetricCard({
+    required SmartRingMeasureType type,
+    required String title,
+    required String value,
+    required String unit,
+    required Color accent,
+    required IconData icon,
+  }) {
+    final bool active = _isRingMetricActive(type);
+    final bool ready = _isRingMetricReady(type);
+    final String status = _ringMetricStatusLabel(type);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+      decoration: BoxDecoration(
+        color: active
+            ? accent.withValues(alpha: 0.10)
+            : ready
+            ? Colors.white
+            : const Color(0xFFFCFDFD),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: active
+              ? accent.withValues(alpha: 0.55)
+              : ready
+              ? accent.withValues(alpha: 0.22)
+              : const Color(0xFFE1E9EC),
+          width: active ? 1.4 : 1.0,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: active ? 0.14 : 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 14, color: accent),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: AppColors.neutral700,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 15.5,
+              fontWeight: FontWeight.w800,
+              color: AppColors.neutral900,
+            ),
+          ),
+          Text(
+            unit,
+            style: TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w600,
+              color: AppColors.neutral500,
+            ),
+          ),
+          const SizedBox(height: 8),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+            decoration: BoxDecoration(
+              color: active
+                  ? accent.withValues(alpha: 0.12)
+                  : ready
+                  ? accent.withValues(alpha: 0.08)
+                  : const Color(0xFFF3F6F7),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              status,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w700,
+                color: active || ready ? accent : AppColors.neutral600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _isRingMetricActive(SmartRingMeasureType type) {
+    final bool isBusy =
+        _ringMeasureState == SmartRingMeasureState.starting ||
+        _ringMeasureState == SmartRingMeasureState.measuring ||
+        _ringMeasureState == SmartRingMeasureState.stopping;
+    return isBusy && _activeRingMeasureType == type;
+  }
+
+  bool _isRingMetricReady(SmartRingMeasureType type) {
+    switch (type) {
+      case SmartRingMeasureType.heartRate:
+        return _heartRateValue != null;
+      case SmartRingMeasureType.bloodPressure:
+        return _bloodPressureSystolic != null &&
+            _bloodPressureDiastolic != null;
+      case SmartRingMeasureType.bloodOxygen:
+        return _spo2Value != null;
+    }
+  }
+
+  int _ringMetricOrder(SmartRingMeasureType type) {
+    switch (type) {
+      case SmartRingMeasureType.heartRate:
+        return 0;
+      case SmartRingMeasureType.bloodOxygen:
+        return 1;
+      case SmartRingMeasureType.bloodPressure:
+        return 2;
+    }
+  }
+
+  String _ringMetricStatusLabel(SmartRingMeasureType type) {
+    if (_isRingMetricActive(type)) {
+      switch (_ringMeasureState) {
+        case SmartRingMeasureState.starting:
+          return 'Chuẩn bị';
+        case SmartRingMeasureState.stopping:
+          return 'Đang chốt';
+        case SmartRingMeasureState.measuring:
+          return 'Đang đo';
+        default:
+          break;
+      }
+    }
+
+    if (_ringMeasureState == SmartRingMeasureState.success &&
+        _isRingMetricReady(type)) {
+      return 'Hoàn tất';
+    }
+
+    if (_isRingMetricReady(type)) {
+      return 'Đã lấy';
+    }
+
+    final SmartRingMeasureType? activeType = _activeRingMeasureType;
+    if (activeType != null &&
+        _ringMetricOrder(type) > _ringMetricOrder(activeType)) {
+      return 'Chờ lượt';
+    }
+
+    return 'Đang chờ';
+  }
+
+  String _ringMetricDisplayName(SmartRingMeasureType type) {
+    switch (type) {
+      case SmartRingMeasureType.heartRate:
+        return 'nhịp tim';
+      case SmartRingMeasureType.bloodPressure:
+        return 'huyết áp';
+      case SmartRingMeasureType.bloodOxygen:
+        return 'SpO2';
+    }
+  }
+
+  Widget _buildVitalsPanel({required bool isLive}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isLive
+              ? const [Color(0xFFFFFFFF), Color(0xFFF9FCFD)]
+              : const [Color(0xFFF9FDFF), Color(0xFFF2FBFD)],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isLive ? const Color(0xFFEAEAEA) : const Color(0xFFDCECF0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  color: const Color(0xFF18ADC3).withValues(alpha: 0.12),
+                ),
+                child: const Icon(
+                  Icons.favorite_rounded,
+                  size: 18,
+                  color: Color(0xFF18ADC3),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isLive
+                          ? 'Chỉ số Smart Ring khi đo'
+                          : 'Kết quả Smart Ring',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.neutral900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _ringStatusText(isLive: isLive),
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: AppColors.neutral600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isLive
+                      ? const Color(0xFFE8F8FB)
+                      : const Color(0xFFEFF8F1),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  isLive ? 'Live sync' : 'Đã chốt',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: isLive
+                        ? const Color(0xFF0F8FA4)
+                        : const Color(0xFF2E7D32),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _buildVitalStatCard(
+                  title: 'Nhịp tim',
+                  value: _heartRateValue == null ? '--' : '${_heartRateValue!}',
+                  unit: 'bpm',
+                  accent: const Color(0xFFE8575A),
+                  icon: Icons.favorite_outline_rounded,
+                  ready: _heartRateValue != null,
+                  emphasize: !isLive,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildVitalStatCard(
+                  title: 'SpO2',
+                  value: _spo2Value == null ? '--' : '${_spo2Value!}',
+                  unit: '%',
+                  accent: const Color(0xFF129EAF),
+                  icon: Icons.air_rounded,
+                  ready: _spo2Value != null,
+                  emphasize: !isLive,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _buildVitalStatCard(
+            title: 'Huyết áp',
+            value: _bloodPressureLabel,
+            unit: 'mmHg',
+            accent: const Color(0xFF8E59FF),
+            icon: Icons.monitor_heart_outlined,
+            ready:
+                _bloodPressureSystolic != null &&
+                _bloodPressureDiastolic != null,
+            fullWidth: true,
+            emphasize: !isLive,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVitalStatCard({
+    required String title,
+    required String value,
+    required String unit,
+    required Color accent,
+    required IconData icon,
+    required bool ready,
+    bool fullWidth = false,
+    bool emphasize = false,
+  }) {
+    return Container(
+      width: fullWidth ? double.infinity : null,
+      padding: EdgeInsets.all(emphasize ? 14 : 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            accent.withValues(alpha: emphasize ? 0.12 : 0.08),
+            Colors.white,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(emphasize ? 16 : 14),
+        border: Border.all(
+          color: accent.withValues(alpha: emphasize ? 0.2 : 0.16),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: emphasize ? 40 : 36,
+            height: emphasize ? 40 : 36,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: emphasize ? 20 : 18, color: accent),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.neutral700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                RichText(
+                  text: TextSpan(
+                    text: value,
+                    style: TextStyle(
+                      fontSize: emphasize ? 20 : 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.neutral900,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: ' $unit',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.neutral600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: ready ? Colors.white : accent.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              ready ? 'Đã có' : 'Đang chờ',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                color: ready ? accent : AppColors.neutral600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String get _bloodPressureLabel {
+    if (_bloodPressureSystolic == null || _bloodPressureDiastolic == null) {
+      return '--/--';
+    }
+    return '${_bloodPressureSystolic!}/${_bloodPressureDiastolic!}';
+  }
+
+  bool get _hasSmartRingVitals =>
+      _heartRateValue != null ||
+      _spo2Value != null ||
+      (_bloodPressureSystolic != null && _bloodPressureDiastolic != null);
+
+  bool get _hasSmartRingInsights =>
+      _heartRateInsight.isNotEmpty ||
+      _spo2Insight.isNotEmpty ||
+      _bloodPressureInsight.isNotEmpty ||
+      _vitalAlignmentInsight.isNotEmpty;
+
+  String _ringStatusText({required bool isLive}) {
+    final SmartRingMeasureType? activeType = _activeRingMeasureType;
+    switch (_ringMeasureState) {
+      case SmartRingMeasureState.starting:
+        return activeType == null
+            ? 'Đang khởi tạo chuỗi đo nhịp tim, SpO2 và huyết áp.'
+            : 'Đang chuẩn bị đo ${_ringMetricDisplayName(activeType)} bằng Smart Ring.';
+      case SmartRingMeasureState.measuring:
+        return isLive
+            ? activeType == null
+                  ? 'Smart Ring đang cập nhật chỉ số sinh tồn theo thời gian thực.'
+                  : 'Smart Ring đang đo ${_ringMetricDisplayName(activeType)} và đồng bộ trực tiếp với biểu đồ EEG.'
+            : 'Smart Ring vẫn đang tiếp tục cập nhật chỉ số của phiên đo này.';
+      case SmartRingMeasureState.stopping:
+        return activeType == null
+            ? 'Đang hoàn tất bước đo hiện tại từ Smart Ring.'
+            : 'Đang chốt mẫu ${_ringMetricDisplayName(activeType)} để chuyển sang bước tiếp theo.';
+      case SmartRingMeasureState.success:
+        return 'Đã thu đủ nhịp tim, SpO2 và huyết áp từ Smart Ring.';
+      case SmartRingMeasureState.error:
+        return 'Smart Ring gặp lỗi trong quá trình đo.';
+      case SmartRingMeasureState.deviceDisconnected:
+        return 'Smart Ring đã ngắt kết nối khỏi phiên đo.';
+      case SmartRingMeasureState.idle:
+        return isLive
+            ? 'Các chỉ số sẽ xuất hiện ngay khi Smart Ring bắt đầu trả dữ liệu.'
+            : 'Hiển thị chỉ số cuối cùng nhận được từ Smart Ring.';
+    }
+  }
 
   void _showTheorySheet() {
     showModalBottomSheet(
@@ -2156,19 +3516,25 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                       title: 'Cách tính điểm (1–10)',
                       color: Color(0xFF7C4DFF),
                       body:
-                          'Điểm tổng hợp được tính từ hai nguồn:\n\n'
-                          '① Sóng não EEG (trọng số 60%)\n'
+                          'Điểm tổng hợp được tính từ ba nguồn:\n\n'
+                          '① Sóng não EEG (trọng số 50%)\n'
                           '   • Tỷ lệ Alpha cao → điểm cao (thư giãn)\n'
                           '   • Tỷ lệ Beta cao → điểm thấp (căng thẳng)\n'
                           '   • Công thức: αRatio × 0.55 + βRatio × 0.35 + 0.1\n\n'
-                          '② Khảo sát tâm lý 10 câu (trọng số 40%)\n'
+                          '② Khảo sát tâm lý 10 câu (trọng số 20%)\n'
                           '   • 10 câu hỏi đánh giá: giấc ngủ, mức độ căng '
                           'thẳng, khả năng tập trung, phương pháp giải toả, '
                           'mệt mỏi, lo lắng, thời gian cá nhân, căng cứng cơ '
                           'thể, kiểm soát cảm xúc, kinh nghiệm thiền\n'
                           '   • Mỗi câu 5 mức (0-4): 0 = căng thẳng nhất, '
                           '4 = thư giãn nhất\n\n'
-                          'Điểm cuối = EEG × 0.6 + Khảo sát × 0.4',
+                          '③ Smart Ring (trọng số 30%)\n'
+                          '   • Nhịp tim ổn định → điểm cao hơn\n'
+                          '   • SpO2 tốt và huyết áp cân bằng → tăng độ tin cậy '
+                          'cho kết luận thư giãn\n'
+                          '   • Nếu EEG và Smart Ring lệch pha, phần diễn giải sẽ '
+                          'ưu tiên mô tả rõ khác biệt giữa tâm trí và phản ứng sinh lý\n\n'
+                          'Điểm cuối = EEG × 0.5 + Khảo sát × 0.2 + Smart Ring × 0.3',
                     ),
                     SizedBox(height: 16),
                     _TheorySection(
@@ -2284,24 +3650,74 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         ),
     ];
 
+    return _buildInsightSectionCard(
+      icon: Icons.quiz_outlined,
+      accent: const Color(0xFF7C4DFF),
+      title: 'Phân tích từ khảo sát',
+      subtitle: 'Kết hợp dữ liệu 10 câu hỏi trắc nghiệm ban đầu',
+      items: insights,
+    );
+  }
+
+  Widget _buildSmartRingInsightsCard() {
+    final insights = <_InsightItem>[
+      if (_heartRateInsight.isNotEmpty)
+        _InsightItem(
+          Icons.favorite_outline_rounded,
+          'Nhịp tim',
+          _heartRateInsight,
+        ),
+      if (_spo2Insight.isNotEmpty)
+        _InsightItem(Icons.air_rounded, 'SpO2', _spo2Insight),
+      if (_bloodPressureInsight.isNotEmpty)
+        _InsightItem(
+          Icons.monitor_heart_outlined,
+          'Huyết áp',
+          _bloodPressureInsight,
+        ),
+      if (_vitalAlignmentInsight.isNotEmpty)
+        _InsightItem(
+          Icons.sync_alt_rounded,
+          'Đối chiếu EEG và Smart Ring',
+          _vitalAlignmentInsight,
+        ),
+    ];
+
+    return _buildInsightSectionCard(
+      icon: Icons.favorite_rounded,
+      accent: const Color(0xFF18ADC3),
+      title: 'Phân tích từ Smart Ring',
+      subtitle:
+          'Giải thích nhịp tim, SpO2 và huyết áp trong cùng bối cảnh với EEG',
+      items: insights,
+    );
+  }
+
+  Widget _buildInsightSectionCard({
+    required IconData icon,
+    required Color accent,
+    required String title,
+    required String subtitle,
+    required List<_InsightItem> items,
+  }) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE0E0FF)),
+        border: Border.all(color: accent.withValues(alpha: 0.22)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: const [
-              Icon(Icons.quiz_outlined, color: Color(0xFF7C4DFF), size: 20),
-              SizedBox(width: 8),
+            children: [
+              Icon(icon, color: accent, size: 20),
+              const SizedBox(width: 8),
               Text(
-                'Phân tích từ khảo sát',
-                style: TextStyle(
+                title,
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                   color: AppColors.neutral800,
@@ -2310,18 +3726,18 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
             ],
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Kết hợp dữ liệu 10 câu hỏi trắc nghiệm ban đầu',
-            style: TextStyle(fontSize: 12, color: AppColors.neutral600),
+          Text(
+            subtitle,
+            style: const TextStyle(fontSize: 12, color: AppColors.neutral600),
           ),
           const SizedBox(height: 12),
-          ...insights.map(
+          ...items.map(
             (item) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(item.icon, size: 18, color: const Color(0xFF7C4DFF)),
+                  Icon(item.icon, size: 18, color: accent),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(

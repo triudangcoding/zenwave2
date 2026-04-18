@@ -179,22 +179,23 @@ class BleService {
     }
 
     await characteristic.setNotifyValue(true);
-    _notifySubscription = characteristic.lastValueStream.listen(_handlePayload);
+    // Use onValueReceived so we only process actual device reads/notifications,
+    // not our own write payloads echoed by lastValueStream.
+    _notifySubscription = characteristic.onValueReceived.listen(_handlePayload);
     debugPrint('[BLE] Notify subscription active, reading initial state...');
     await characteristic.read();
     debugPrint(
       '[BLE] Initial state read complete. touchDetected=${touchDetectedNotifier.value}',
     );
 
-    // Lower ESP32 touch thresholds for headband electrode contact
-    // (forehead via pad is weaker signal than direct finger touch)
-    debugPrint('[BLE] Sending lowered thresholds for headband use...');
-    await sendCommand('thr:35000,30000');
-    // Small delay then re-read to get state with new thresholds
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    await sendCommand('get');
+    // Force firmware back to AUTO sensing mode in case a previous manual test
+    // left the ESP32 stuck at a constant true/false state.
+    debugPrint('[BLE] Sending auto mode command to ESP32 touch monitor...');
+    await sendCommand('auto');
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    await characteristic.read();
     debugPrint(
-      '[BLE] Threshold config sent. touchDetected=${touchDetectedNotifier.value}',
+      '[BLE] Auto mode confirmed. touchDetected=${touchDetectedNotifier.value}',
     );
   }
 
