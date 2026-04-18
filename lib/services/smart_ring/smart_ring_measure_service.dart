@@ -270,8 +270,7 @@ class SmartRingMeasureService {
           await _runMeasureStep<BloodPressureData>(
             type: SmartRingMeasureType.bloodPressure,
             starter: startBloodPressureMeasure,
-            timeout: const Duration(seconds: 45),
-            stopAfterFirstSample: true,
+            stopAfterFirstSample: false,
           );
 
       return SmartRingCombinedMeasurementResult(
@@ -630,10 +629,12 @@ class SmartRingMeasureService {
     );
     _currentBloodPressureMeasurements.add(_lastBloodPressureData!);
     _onBloodPressureData?.call(_lastBloodPressureData!);
-    _completePendingMeasure(
-      SmartRingMeasureType.bloodPressure,
-      _lastBloodPressureData!,
-    );
+    if (_pendingMeasureStopsOnFirstSample) {
+      _completePendingMeasure(
+        SmartRingMeasureType.bloodPressure,
+        _lastBloodPressureData!,
+      );
+    }
   }
 
   void _markInterrupted(String message) {

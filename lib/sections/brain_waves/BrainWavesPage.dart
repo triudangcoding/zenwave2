@@ -11,6 +11,7 @@ import '../../screens/Breathing/BreathingDetailScreen.dart';
 import '../../sections/meditation/DetailLessonMeditation.dart';
 import '../../services/app_state_service.dart';
 import '../../services/ble_service.dart';
+import '../../services/brain_waves_mock_sleep_service.dart';
 import '../../services/smart_ring/smart_ring_connection_service.dart';
 import '../../services/smart_ring/smart_ring_measure_service.dart';
 
@@ -797,6 +798,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   double _eegScore = 0;
   double _questionnaireScore = 0;
   double _smartRingScore = 0;
+  double _sleepScore = 0;
   String _evaluation = '';
   String _evaluationDetail = '';
   Color _evalColor = const Color(0xFF4F9A67);
@@ -807,6 +809,8 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   String _tensionInsight = '';
   String _copingInsight = '';
   String _smartRingSummary = '';
+  String _sleepSummary = '';
+  String _sleepRecoveryInsight = '';
   String _heartRateInsight = '';
   String _spo2Insight = '';
   String _bloodPressureInsight = '';
@@ -823,6 +827,9 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   final AudioPlayer _musicPlayer = AudioPlayer();
   String? _playingTrack;
+  Map<String, dynamic> _mockSleepSummary = Map<String, dynamic>.from(
+    BrainWavesMockSleepService.defaultSummary,
+  );
 
   // Wave definitions
   static const Color alphaColor = Color(0xFF149A33);
@@ -833,6 +840,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   void initState() {
     super.initState();
     _configureMeasureService();
+    unawaited(_loadMockSleepSummary());
     AppStateService.touchDetectedNotifier.addListener(_onTouchChanged);
     AppStateService.wearingDetectionEnabledNotifier.addListener(
       _onWearingToggleChanged,
@@ -928,6 +936,21 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         });
       },
     );
+  }
+
+  Future<void> _loadMockSleepSummary() async {
+    final Map<String, dynamic> sleepSummary =
+        await BrainWavesMockSleepService.loadSummary();
+
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _mockSleepSummary = <String, dynamic>{
+        ...BrainWavesMockSleepService.defaultSummary,
+        ...sleepSummary,
+      };
+    });
   }
 
   Future<void> _playBeep() async {
@@ -1317,15 +1340,20 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
       _questionnaireScore = 5.5; // neutral fallback
     }
 
-    // ── Smart Ring score from HR, SpO2 and blood pressure ──
+    // ── Smart Ring + sleep scores ─────────────────────────────────────────
     _smartRingScore = _deriveSmartRingInsights();
+    _sleepScore = _deriveSleepRecoveryInsights();
 
-    // ── Blend: 50% EEG + 20% questionnaire + 30% Smart Ring ──
-    double weightedTotal = _eegScore * 0.5 + _questionnaireScore * 0.2;
-    double totalWeight = 0.7;
+    // ── Blend: EEG 45% + questionnaire 20% + sleep 15% + Smart Ring 20% ──
+    double weightedTotal = _eegScore * 0.45 + _questionnaireScore * 0.2;
+    double totalWeight = 0.65;
+    if (_hasSleepSummary) {
+      weightedTotal += _sleepScore * 0.15;
+      totalWeight += 0.15;
+    }
     if (_hasSmartRingVitals) {
-      weightedTotal += _smartRingScore * 0.3;
-      totalWeight += 0.3;
+      weightedTotal += _smartRingScore * 0.2;
+      totalWeight += 0.2;
     }
     _overallScore = (weightedTotal / totalWeight).clamp(1.5, 9.5);
     _overallScore = double.parse(_overallScore.toStringAsFixed(1));
@@ -1366,6 +1394,8 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
 
     _evaluationDetail = [
       _evaluationDetail,
+      if (_sleepSummary.isNotEmpty) _sleepSummary,
+      if (_sleepRecoveryInsight.isNotEmpty) _sleepRecoveryInsight,
       if (_smartRingSummary.isNotEmpty) _smartRingSummary,
       if (_vitalAlignmentInsight.isNotEmpty) _vitalAlignmentInsight,
     ].join(' ');
@@ -1537,7 +1567,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
 
     if (summaryParts.isNotEmpty) {
       _smartRingSummary =
-          'Smart Ring bổ sung thêm bức tranh sinh tồn với ${summaryParts.join(', ')}.';
+          'Trong phiên đo này, Smart Ring ghi nhận ${summaryParts.join(', ')} để đối chiếu thêm với tín hiệu EEG.';
     }
 
     final bool eegLooksRelaxed = _eegScore >= 7.0;
@@ -1574,6 +1604,53 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     return score.clamp(1.0, 10.0);
   }
 
+  double _deriveSleepRecoveryInsights() {
+    _sleepSummary = '';
+    _sleepRecoveryInsight = '';
+
+    if (!_hasSleepSummary) {
+      return 5.5;
+    }
+
+    final int totalMinutes = (_mockSleepSummary['totalTime'] as num? ?? 0)
+        .round();
+    final int score100 = (_mockSleepSummary['score'] as num? ?? 0).round();
+    final int deepSleep = (_mockSleepSummary['deepSleep'] as num? ?? 0).round();
+    final int remSleep = (_mockSleepSummary['remSleep'] as num? ?? 0).round();
+    final int awakeCount = (_mockSleepSummary['awakeCount'] as num? ?? 0)
+        .round();
+    final String quality =
+        _mockSleepSummary['quality'] as String? ?? 'Chưa đủ dữ liệu';
+
+    final int hours = totalMinutes ~/ 60;
+    final int minutes = totalMinutes % 60;
+
+    _sleepSummary =
+        'Giấc ngủ đêm qua đạt $hours giờ ${minutes.toString().padLeft(2, '0')} phút, '
+        'chất lượng $quality với $deepSleep phút ngủ sâu và $remSleep phút REM.';
+
+    if (totalMinutes >= 420 &&
+        totalMinutes <= 540 &&
+        deepSleep >= 100 &&
+        remSleep >= 70) {
+      _sleepRecoveryInsight =
+          'Nền phục hồi qua đêm khá tốt, nên não bộ và cơ thể có điểm tựa ổn hơn khi bước vào phiên đo sáng nay.';
+    } else if (totalMinutes >= 390 && deepSleep >= 85) {
+      _sleepRecoveryInsight =
+          'Giấc ngủ ở mức chấp nhận được, nhưng độ sâu phục hồi vẫn chưa thật sự tối ưu nên kết luận thư giãn cần đọc ở mức vừa phải.';
+    } else {
+      _sleepRecoveryInsight =
+          'Giấc ngủ chưa thật sự đầy đặn hoặc còn phân mảnh, nên kết quả sóng não và sinh hiệu hôm nay có thể chịu ảnh hưởng bởi thiếu phục hồi qua đêm.';
+    }
+
+    if (awakeCount >= 2) {
+      _sleepRecoveryInsight =
+          'Giấc ngủ có dấu hiệu bị ngắt quãng $awakeCount lần, vì vậy mức hồi phục thần kinh tự chủ có thể chưa trọn vẹn.';
+    }
+
+    return (score100 / 10).clamp(1.0, 10.0);
+  }
+
   void _reset() {
     unawaited(_smartRingMeasureService.cancelCombinedMeasurementSequence());
     _phaseTimer?.cancel();
@@ -1595,6 +1672,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
       _smartRingSequenceCompleted = false;
       _ringAbortHandled = false;
       _smartRingScore = 0;
+      _sleepScore = 0;
       _evaluation = '';
       _evaluationDetail = '';
       _sleepInsight = '';
@@ -1602,6 +1680,8 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
       _tensionInsight = '';
       _copingInsight = '';
       _smartRingSummary = '';
+      _sleepSummary = '';
+      _sleepRecoveryInsight = '';
       _heartRateInsight = '';
       _spo2Insight = '';
       _bloodPressureInsight = '';
@@ -2182,7 +2262,9 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
             height: 1.5,
           ),
         ),
-        const SizedBox(height: 36),
+        const SizedBox(height: 24),
+        _buildMockSleepSection(),
+        const SizedBox(height: 28),
         _buildPrimaryButton(
           label: 'Bắt đầu đo',
           icon: Icons.waves,
@@ -2198,6 +2280,658 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
           ),
       ],
     );
+  }
+
+  Widget _buildMockSleepSection() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.white, Color(0xFFFAFBFF)],
+        ),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF6366F1).withValues(alpha: 0.10),
+            offset: const Offset(0, 8),
+            blurRadius: 24,
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            offset: const Offset(0, 2),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+      child: _buildMockSleepSummaryCard(_mockSleepSummary),
+    );
+  }
+
+  Widget _buildSleepResultSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF6F5FF),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE3E0FF)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.bedtime_rounded,
+                  size: 17,
+                  color: Color(0xFF6366F1),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Giấc ngủ trong phần kết luận',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.neutral900,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Được dùng như nền phục hồi để đối chiếu với EEG và Smart Ring.',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: AppColors.neutral600,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1).withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '${_sleepScore.toStringAsFixed(1)}/10',
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF6366F1),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildMockSleepSection(),
+      ],
+    );
+  }
+
+  Widget _buildMockSleepSummaryCard(Map<String, dynamic> sleepData) {
+    final int totalTime = (sleepData['totalTime'] as num? ?? 0).round();
+    final int totalHours = totalTime ~/ 60;
+    final int totalMinutes = totalTime % 60;
+    final int score = (sleepData['score'] as num? ?? 0).round();
+    final String quality = sleepData['quality'] as String? ?? 'Chưa đủ dữ liệu';
+    final List<Color> qualityColors = _mockSleepQualityColors(quality);
+
+    return Column(
+      children: [
+        _buildMockSleepHeader(
+          hasRealtimeData: sleepData['hasRealData'] == true,
+        ),
+        const SizedBox(height: 16),
+        _buildMockSleepTimeInfo(
+          totalHours: totalHours,
+          totalMinutes: totalMinutes,
+          score: score,
+          quality: quality,
+          qualityColors: qualityColors,
+        ),
+        const SizedBox(height: 12),
+        _buildMockSleepTimingInfo(sleepData),
+        const SizedBox(height: 16),
+        _buildMockSleepStagesInfo(sleepData),
+      ],
+    );
+  }
+
+  Widget _buildMockSleepHeader({bool hasRealtimeData = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.25),
+                      offset: const Offset(0, 4),
+                      blurRadius: 12,
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.bedtime, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Giấc ngủ đêm qua',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1E293B),
+                        letterSpacing: 0.2,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (hasRealtimeData)
+                      Text(
+                        'Dữ liệu thời gian thực',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          color: const Color(0xFF10B981).withValues(alpha: 0.8),
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF8B5CF6).withValues(alpha: 0.08),
+                const Color(0xFF6366F1).withValues(alpha: 0.08),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+              width: 0.8,
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Chi tiết',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF8B5CF6),
+                  letterSpacing: 0.1,
+                ),
+              ),
+              SizedBox(width: 3),
+              Icon(Icons.chevron_right, color: Color(0xFF8B5CF6), size: 12),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMockSleepTimeInfo({
+    required int totalHours,
+    required int totalMinutes,
+    required int score,
+    required String quality,
+    required List<Color> qualityColors,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$totalHours giờ ${totalMinutes.toString().padLeft(2, '0')} phút',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF1E293B),
+                  letterSpacing: 0.3,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Điểm: $score/100',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: const Color(0xFF64748B).withValues(alpha: 0.8),
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: qualityColors,
+            ),
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [
+              BoxShadow(
+                color: qualityColors.first.withValues(alpha: 0.25),
+                offset: const Offset(0, 2),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle, size: 12, color: Colors.white),
+              const SizedBox(width: 4),
+              Text(
+                quality,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMockSleepTimingInfo(Map<String, dynamic> sleepData) {
+    final int sessionsCount = (sleepData['sessionsCount'] as num? ?? 1).round();
+    final int awakeCount = (sleepData['awakeCount'] as num? ?? 0).round();
+
+    return Column(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFFF8FAFC), Color(0xFFF1F5F9)],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE2E8F0), width: 0.8),
+          ),
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.bedtime,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Giờ đi ngủ',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF64748B),
+                              letterSpacing: 0.1,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            sleepData['startTime'] as String? ?? '--:--',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF1E293B),
+                              letterSpacing: 0.2,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 32,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      const Color(0xFFE2E8F0).withValues(alpha: 0.3),
+                      const Color(0xFFE2E8F0),
+                      const Color(0xFFE2E8F0).withValues(alpha: 0.3),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFFFB7185), Color(0xFFEC4899)],
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.wb_sunny,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Giờ thức dậy',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF64748B),
+                              letterSpacing: 0.1,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            sleepData['endTime'] as String? ?? '--:--',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF1E293B),
+                              letterSpacing: 0.2,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (sessionsCount > 1 || awakeCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFFFEF3C7), Color(0xFFFEF9E7)],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                  width: 0.8,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                    ),
+                    child: const Icon(
+                      Icons.info_outline,
+                      size: 12,
+                      color: Color(0xFFF59E0B),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      sessionsCount > 1
+                          ? 'Có $sessionsCount đợt ngủ, đã thức dậy $awakeCount lần'
+                          : 'Đã thức dậy $awakeCount lần trong đêm',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFF59E0B),
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildMockSleepStagesInfo(Map<String, dynamic> sleepData) {
+    final int lightSleep = (sleepData['lightSleep'] as num? ?? 1).round().clamp(
+      1,
+      10000,
+    );
+    final int deepSleep = (sleepData['deepSleep'] as num? ?? 1).round().clamp(
+      1,
+      10000,
+    );
+    final int remSleep = (sleepData['remSleep'] as num? ?? 1).round().clamp(
+      1,
+      10000,
+    );
+    final int awakeFlex = ((sleepData['awakeCount'] as num? ?? 1).round() * 5)
+        .clamp(1, 10000);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Các giai đoạn giấc ngủ',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1E293B),
+            letterSpacing: 0.2,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          height: 10,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                offset: const Offset(0, 1),
+                blurRadius: 3,
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                flex: lightSleep,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF34D399), Color(0xFF10B981)],
+                    ),
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(5),
+                      bottomLeft: Radius.circular(5),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: deepSleep,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF06B6D4), Color(0xFF0891B2)],
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: remSleep,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: awakeFlex,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFFFBBF24), Color(0xFFF59E0B)],
+                    ),
+                    borderRadius: BorderRadius.only(
+                      topRight: Radius.circular(5),
+                      bottomRight: Radius.circular(5),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFFFAFBFF), Color(0xFFF8FAFC)],
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE2E8F0), width: 0.8),
+          ),
+          padding: const EdgeInsets.all(10),
+          child: const Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            children: [
+              _SleepLegendItem(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF34D399), Color(0xFF10B981)],
+                ),
+                label: 'Ngủ nhẹ',
+              ),
+              _SleepLegendItem(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF06B6D4), Color(0xFF0891B2)],
+                ),
+                label: 'Ngủ sâu',
+              ),
+              _SleepLegendItem(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+                ),
+                label: 'REM',
+              ),
+              _SleepLegendItem(
+                gradient: LinearGradient(
+                  colors: [Color(0xFFFBBF24), Color(0xFFF59E0B)],
+                ),
+                label: 'Thức',
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<Color> _mockSleepQualityColors(String quality) {
+    switch (quality) {
+      case 'Giấc ngủ tốt':
+        return const [Color(0xFF10B981), Color(0xFF059669)];
+      case 'Giấc ngủ trung bình':
+        return const [Color(0xFF3B82F6), Color(0xFF1D4ED8)];
+      case 'Giấc ngủ kém':
+        return const [Color(0xFFF59E0B), Color(0xFFEF4444)];
+      default:
+        return const [Color(0xFF6B7280), Color(0xFF4B5563)];
+    }
   }
 
   // ── Phase: Preparing ─────────────────────────────────────────────────────
@@ -2465,6 +3199,8 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
         const SizedBox(height: 16),
         _buildVitalsPanel(isLive: false),
         const SizedBox(height: 16),
+        if (_hasSleepSummary) _buildSleepResultSection(),
+        if (_hasSleepSummary) const SizedBox(height: 16),
         // ── Stress scale ──
         _buildStressScale(),
         const SizedBox(height: 16),
@@ -2503,7 +3239,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
               ),
               const SizedBox(height: 10),
               const Text(
-                'Tổng hợp từ EEG, Smart Ring và khảo sát nền ban đầu.',
+                'Tổng hợp từ EEG, Smart Ring, giấc ngủ đêm qua và khảo sát nền ban đầu.',
                 style: TextStyle(fontSize: 12, color: AppColors.neutral600),
               ),
               const SizedBox(height: 8),
@@ -2553,7 +3289,7 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                     _scoreBreakdownRow(
                       'Sóng não (EEG)',
                       _eegScore,
-                      '50%',
+                      '45%',
                       const Color(0xFF129EAF),
                     ),
                     const SizedBox(height: 4),
@@ -2565,9 +3301,16 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                     ),
                     const SizedBox(height: 4),
                     _scoreBreakdownRow(
+                      'Giấc ngủ đêm qua',
+                      _sleepScore,
+                      '15%',
+                      const Color(0xFF6366F1),
+                    ),
+                    const SizedBox(height: 4),
+                    _scoreBreakdownRow(
                       'Smart Ring',
                       _smartRingScore,
-                      '30%',
+                      '20%',
                       const Color(0xFF18ADC3),
                     ),
                   ],
@@ -3133,6 +3876,10 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
   }
 
   Widget _buildVitalsPanel({required bool isLive}) {
+    if (!isLive) {
+      return _buildResultVitalsPanel();
+    }
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -3260,6 +4007,171 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     );
   }
 
+  Widget _buildResultVitalsPanel() {
+    final Color accent = _smartRingResultAccent;
+    final Color badgeColor = _smartRingResultBadgeColor;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFCFEFE),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFDCE8EC)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120E2A32),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.favorite_rounded, size: 20, color: accent),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Tóm tắt Smart Ring',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.neutral900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Đọc phản ứng cơ thể từ nhịp tim, SpO2 và huyết áp trong cùng phiên EEG.',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: AppColors.neutral600,
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: badgeColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  _smartRingResultBadgeLabel,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: badgeColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: accent.withValues(alpha: 0.14)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Nhận xét chung',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: accent,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _smartRingResultHeadline,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.neutral900,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _smartRingResultComment,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: AppColors.neutral700,
+                    height: 1.55,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildResultVitalTile(
+                  title: 'Nhịp tim',
+                  value: _heartRateValue == null ? '--' : '${_heartRateValue!}',
+                  unit: 'bpm',
+                  accent: const Color(0xFFE8575A),
+                  icon: Icons.favorite_outline_rounded,
+                  ready: _heartRateValue != null,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildResultVitalTile(
+                  title: 'SpO2',
+                  value: _spo2Value == null ? '--' : '${_spo2Value!}',
+                  unit: '%',
+                  accent: const Color(0xFF129EAF),
+                  icon: Icons.air_rounded,
+                  ready: _spo2Value != null,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildResultVitalTile(
+                  title: 'Huyết áp',
+                  value: _bloodPressureLabel,
+                  unit: 'mmHg',
+                  accent: const Color(0xFF5D7CF6),
+                  icon: Icons.monitor_heart_outlined,
+                  ready:
+                      _bloodPressureSystolic != null &&
+                      _bloodPressureDiastolic != null,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildVitalStatCard({
     required String title,
     required String value,
@@ -3356,6 +4268,90 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     );
   }
 
+  Widget _buildResultVitalTile({
+    required String title,
+    required String value,
+    required String unit,
+    required Color accent,
+    required IconData icon,
+    required bool ready,
+  }) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(11, 11, 11, 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2EAEE)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(icon, size: 15, color: accent),
+              ),
+              const Spacer(),
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: ready ? accent : const Color(0xFFC9D4D8),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: AppColors.neutral700,
+            ),
+          ),
+          const SizedBox(height: 5),
+          RichText(
+            text: TextSpan(
+              text: value,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.neutral900,
+              ),
+              children: [
+                TextSpan(
+                  text: ' $unit',
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.neutral600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            ready ? 'Đã ghi nhận' : 'Chưa có dữ liệu',
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+              color: ready ? accent : AppColors.neutral500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String get _bloodPressureLabel {
     if (_bloodPressureSystolic == null || _bloodPressureDiastolic == null) {
       return '--/--';
@@ -3363,10 +4359,90 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     return '${_bloodPressureSystolic!}/${_bloodPressureDiastolic!}';
   }
 
+  String get _smartRingResultHeadline {
+    if (!_hasSmartRingVitals) {
+      return 'Chưa đủ dữ liệu Smart Ring để đưa ra nhận xét.';
+    }
+    if (_smartRingScore >= 8.4) {
+      return 'Sinh hiệu ổn định, khá phù hợp với một trạng thái thư giãn tốt.';
+    }
+    if (_smartRingScore >= 6.8) {
+      return 'Sinh hiệu tương đối cân bằng, nhưng cơ thể vẫn còn hoạt hóa nhẹ.';
+    }
+    if (_smartRingScore >= 5.2) {
+      return 'Cơ thể chưa hạ tải hoàn toàn, nên đọc kết quả thư giãn ở mức thận trọng.';
+    }
+    return 'Cơ thể còn căng sinh lý khá rõ, nên ưu tiên phục hồi thêm sau phiên đo.';
+  }
+
+  String get _smartRingResultComment {
+    final List<String> parts = <String>[];
+    if (_smartRingSummary.isNotEmpty) {
+      parts.add(_smartRingSummary);
+    }
+    if (_vitalAlignmentInsight.isNotEmpty) {
+      parts.add(_vitalAlignmentInsight);
+    }
+    if (parts.isEmpty) {
+      return 'Smart Ring giúp bổ sung góc nhìn sinh lý để kết quả cuối không chỉ dựa vào sóng não, mà còn phản ánh cách cơ thể phản ứng trong suốt phiên đo.';
+    }
+    return parts.join(' ');
+  }
+
+  String get _smartRingResultBadgeLabel {
+    if (!_hasSmartRingVitals) {
+      return 'Thiếu dữ liệu';
+    }
+    if (_smartRingScore >= 8.4) {
+      return 'Ổn định';
+    }
+    if (_smartRingScore >= 6.8) {
+      return 'Khá cân bằng';
+    }
+    if (_smartRingScore >= 5.2) {
+      return 'Cần lưu ý';
+    }
+    return 'Hoạt hóa cao';
+  }
+
+  Color get _smartRingResultBadgeColor {
+    if (!_hasSmartRingVitals) {
+      return const Color(0xFF78909C);
+    }
+    if (_smartRingScore >= 8.4) {
+      return const Color(0xFF2E7D32);
+    }
+    if (_smartRingScore >= 6.8) {
+      return const Color(0xFF00838F);
+    }
+    if (_smartRingScore >= 5.2) {
+      return const Color(0xFFF57C00);
+    }
+    return const Color(0xFFC62828);
+  }
+
+  Color get _smartRingResultAccent {
+    if (!_hasSmartRingVitals) {
+      return const Color(0xFF78909C);
+    }
+    if (_smartRingScore >= 8.4) {
+      return const Color(0xFF1F8A70);
+    }
+    if (_smartRingScore >= 6.8) {
+      return const Color(0xFF129EAF);
+    }
+    if (_smartRingScore >= 5.2) {
+      return const Color(0xFFF59E0B);
+    }
+    return const Color(0xFFE8575A);
+  }
+
   bool get _hasSmartRingVitals =>
       _heartRateValue != null ||
       _spo2Value != null ||
       (_bloodPressureSystolic != null && _bloodPressureDiastolic != null);
+
+  bool get _hasSleepSummary => _mockSleepSummary.isNotEmpty;
 
   bool get _hasSmartRingInsights =>
       _heartRateInsight.isNotEmpty ||
@@ -3516,8 +4592,8 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                       title: 'Cách tính điểm (1–10)',
                       color: Color(0xFF7C4DFF),
                       body:
-                          'Điểm tổng hợp được tính từ ba nguồn:\n\n'
-                          '① Sóng não EEG (trọng số 50%)\n'
+                          'Điểm tổng hợp được tính từ bốn nguồn:\n\n'
+                          '① Sóng não EEG (trọng số 45%)\n'
                           '   • Tỷ lệ Alpha cao → điểm cao (thư giãn)\n'
                           '   • Tỷ lệ Beta cao → điểm thấp (căng thẳng)\n'
                           '   • Công thức: αRatio × 0.55 + βRatio × 0.35 + 0.1\n\n'
@@ -3528,13 +4604,18 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
                           'thể, kiểm soát cảm xúc, kinh nghiệm thiền\n'
                           '   • Mỗi câu 5 mức (0-4): 0 = căng thẳng nhất, '
                           '4 = thư giãn nhất\n\n'
-                          '③ Smart Ring (trọng số 30%)\n'
+                          '③ Giấc ngủ đêm qua (trọng số 15%)\n'
+                          '   • Thời lượng ngủ, ngủ sâu, REM và số lần tỉnh '
+                          'giấc được dùng để đọc mức phục hồi qua đêm\n'
+                          '   • Giấc ngủ tốt giúp tăng độ tin cậy cho kết luận '
+                          'thư giãn và khả năng hồi phục thần kinh\n\n'
+                          '④ Smart Ring (trọng số 20%)\n'
                           '   • Nhịp tim ổn định → điểm cao hơn\n'
                           '   • SpO2 tốt và huyết áp cân bằng → tăng độ tin cậy '
                           'cho kết luận thư giãn\n'
                           '   • Nếu EEG và Smart Ring lệch pha, phần diễn giải sẽ '
                           'ưu tiên mô tả rõ khác biệt giữa tâm trí và phản ứng sinh lý\n\n'
-                          'Điểm cuối = EEG × 0.5 + Khảo sát × 0.2 + Smart Ring × 0.3',
+                          'Điểm cuối = EEG × 0.45 + Khảo sát × 0.2 + Giấc ngủ × 0.15 + Smart Ring × 0.2',
                     ),
                     SizedBox(height: 16),
                     _TheorySection(
@@ -3686,9 +4767,9 @@ class _BrainMeasurementViewState extends State<_BrainMeasurementView> {
     return _buildInsightSectionCard(
       icon: Icons.favorite_rounded,
       accent: const Color(0xFF18ADC3),
-      title: 'Phân tích từ Smart Ring',
+      title: 'Nhận xét chi tiết Smart Ring',
       subtitle:
-          'Giải thích nhịp tim, SpO2 và huyết áp trong cùng bối cảnh với EEG',
+          'Diễn giải từng chỉ số sinh tồn và mức đồng thuận của cơ thể với EEG',
       items: insights,
     );
   }
@@ -5483,6 +6564,47 @@ class _TheorySection extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SleepLegendItem extends StatelessWidget {
+  const _SleepLegendItem({required this.gradient, required this.label});
+
+  final LinearGradient gradient;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: BorderRadius.circular(3),
+            boxShadow: [
+              BoxShadow(
+                color: gradient.colors.first.withValues(alpha: 0.3),
+                offset: const Offset(0, 1),
+                blurRadius: 2,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF64748B),
+            letterSpacing: 0.1,
+          ),
+        ),
+      ],
     );
   }
 }

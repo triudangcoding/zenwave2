@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../services/app_state_service.dart';
+import '../../services/brain_waves_mock_sleep_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -26,7 +27,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 title: 'Nhận diện đeo băng đô',
                 trailing: Switch(
                   value: wearingEnabled,
-                  activeColor: AppColors.cyan500,
+                  activeThumbColor: AppColors.cyan500,
+                  activeTrackColor: AppColors.cyan500.withValues(alpha: 0.35),
                   inactiveThumbColor: AppColors.neutral900,
                   inactiveTrackColor: AppColors.neutral300,
                   onChanged: (value) {
@@ -69,6 +71,7 @@ class _ProfilePageState extends State<ProfilePage> {
               );
               if (confirmed == true) {
                 await AppStateService.resetAll();
+                await BrainWavesMockSleepService.regenerateSummary();
               }
             },
           ),
@@ -83,16 +86,12 @@ class _ProfileActionTile extends StatelessWidget {
     required this.icon,
     required this.title,
     this.trailing,
-    this.showChevron = true,
-    this.backgroundColor,
     this.onTap,
   });
 
   final IconData icon;
   final String title;
   final Widget? trailing;
-  final bool showChevron;
-  final Color? backgroundColor;
   final VoidCallback? onTap;
 
   @override
@@ -101,10 +100,7 @@ class _ProfileActionTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Container(
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(14),
-        ),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(14)),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
         child: Row(
           children: [
@@ -121,13 +117,11 @@ class _ProfileActionTile extends StatelessWidget {
               ),
             ),
             trailing ??
-                (showChevron
-                    ? const Icon(
-                        Icons.chevron_right,
-                        color: AppColors.neutral600,
-                        size: 24,
-                      )
-                    : const SizedBox.shrink()),
+                const Icon(
+                  Icons.chevron_right,
+                  color: AppColors.neutral600,
+                  size: 24,
+                ),
           ],
         ),
       ),
