@@ -1,0 +1,15 @@
+# Generated from R8 missing_rules.txt
+-dontwarn com.alibaba.fastjson.JSONObject
+-dontwarn com.alibaba.fastjson.TypeReference
+-dontwarn com.alibaba.fastjson.parser.Feature
+-dontwarn com.google.firebase.crashlytics.buildtools.reloc.org.apache.commons.codec.binary.Hex
+-dontwarn org.apache.commons.lang3.StringUtils
+-dontwarn org.bouncycastle.jsse.BCSSLParameters
+-dontwarn org.bouncycastle.jsse.BCSSLSocket
+-dontwarn org.bouncycastle.jsse.provider.BouncyCastleJsseProvider
+-dontwarn org.conscrypt.Conscrypt$Version
+-dontwarn org.conscrypt.Conscrypt
+-dontwarn org.conscrypt.ConscryptHostnameVerifier
+-dontwarn org.openjsse.javax.net.ssl.SSLParameters
+-dontwarn org.openjsse.javax.net.ssl.SSLSocket
+-dontwarn org.openjsse.net.ssl.OpenJSSE
