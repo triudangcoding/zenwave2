@@ -13,3 +13,33 @@
 -dontwarn org.openjsse.javax.net.ssl.SSLParameters
 -dontwarn org.openjsse.javax.net.ssl.SSLSocket
 -dontwarn org.openjsse.net.ssl.OpenJSSE
+
+################YCBT Smart Ring SDK###############
+# Keep entire YCBT SDK — required for BLE reconnect, callbacks, and JNI
+-keep class com.yucheng.ycbtsdk.** { *; }
+-keep interface com.yucheng.ycbtsdk.** { *; }
+-dontwarn com.yucheng.ycbtsdk.**
+
+# Keep the Flutter plugin bridge classes
+-keep class com.example.yc_product_plugin.** { *; }
+-keep interface com.example.yc_product_plugin.** { *; }
+
+################FastJSON (used by YCBT SDK)###############
+-keep class com.alibaba.fastjson.** { *; }
+-dontwarn com.alibaba.fastjson.**
+
+################MQTT (used by YCBT SDK)###############
+-keep class org.eclipse.paho.client.mqttv3.** { *; }
+-dontwarn org.eclipse.paho.client.mqttv3.**
+
+################Nordic DFU (ring OTA)###############
+-keep class no.nordicsemi.android.dfu.** { *; }
+-dontwarn no.nordicsemi.android.dfu.**
+
+################JL Watch SDK###############
+-keep class com.jieli.** { *; }
+-dontwarn com.jieli.**
+
+################Ali Agent###############
+-keep class com.alibaba.sdk.** { *; }
+-dontwarn com.alibaba.sdk.**
